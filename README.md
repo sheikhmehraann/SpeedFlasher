@@ -21,13 +21,12 @@ SpeedFlasher converts partition image dumps (`.img` or `.img.zst`) into flashabl
 SpeedFlasher/
 ├── bin/
 │   ├── device/                  # ARM64 recovery binaries (lptools, avbctl, zstd-arm64, etc.)
-│   ├── linux/                   # Linux host tools (fastboot, zstd, lpunpack, etc.)
+│   ├── linux/                   # Linux host tools (fastboot, zstd)
 │   └── windows/                 # Windows host tools (fastboot.exe, zstd.exe, DLLs)
 ├── core/
 │   ├── avb.py                   # AVB 2.0 vbmeta header parser and flag patcher
 │   ├── builder.py               # Package staging, multi-threaded compression, and ZIP packaging
 │   ├── partitions.py            # Partition image scanning and filesystem detection
-│   ├── scripts.py               # Shared utility scripts
 │   ├── linux/
 │   │   ├── installer.py         # Linux Fastboot shell script generator
 │   │   └── platform.py          # Linux dependency checker and tool resolver
@@ -43,7 +42,7 @@ SpeedFlasher/
 ├── tests/
 │   └── test_speedflasher.py     # Multi-OS unit and integration test suite
 ├── main.py                      # Interactive CLI and headless entrypoint
-├── requirements.txt             # Python requirements (zstandard)
+├── requirements.txt             # Python requirements (optional fallback)
 ├── start.bat                    # Windows launcher
 ├── start.sh                     # Linux launcher
 └── start_termux.sh              # Termux launcher

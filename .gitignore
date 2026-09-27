@@ -19,5 +19,8 @@ extracted/
 *.zip
 *.img
 *.zst
+*.7z
+*.tar*
+.refs/
 .DS_Store
 Thumbs.db
