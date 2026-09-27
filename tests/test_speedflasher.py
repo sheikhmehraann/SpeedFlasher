@@ -299,6 +299,7 @@ class TestSpeedFlasherDeepOS(unittest.TestCase):
             "Mehraan",  # Maintainer :
             "1",  # Ztsd Compression (0-22) :
             "1",  # Zip Compression (0-9) :
+            "y",  # Proceed with build? [Y] :
             ""  # Press Enter to exit...
         ]
 
@@ -314,12 +315,51 @@ class TestSpeedFlasherDeepOS(unittest.TestCase):
                     sys.stdout = old_stdout
 
                 out = captured.getvalue()
+                self.assertIn("Build Configuration Review:", out)
                 self.assertIn("SpeedFlasher Build Summary", out)
                 self.assertIn("Infinix GT 20 Pro", out)
                 self.assertIn("X6871", out)
                 self.assertIn("15.0", out)
                 self.assertIn("DISABLE", out)
                 self.assertIn("SUCCESS", out)
+
+    def test_interactive_flow_back_navigation(self):
+        from main import interactive_flow
+
+        user_inputs = [
+            self.test_dir,        # 1. IMGS Path
+            "Wrong Device",       # 2. Devicename
+            "WrongCodename",      # 3. Codename
+            "b",                  # 4. At Version -> 'b' goes back to 3 (Codename)
+            "X6871",              # 3. Codename corrected
+            "15.1",               # 4. Version
+            "disable",            # 5. AVB 2.0
+            "Mehraan",            # 6. Maintainer
+            "1",                  # 7. Zstd
+            "1",                  # 8. Zip
+            "2",                  # 9. Review screen -> type '2' to edit Devicename
+            "Infinix GT 20 Pro",  # 2. Devicename corrected
+            "y",                  # 9. Review screen -> 'y' to proceed
+            ""                    # Press Enter to exit...
+        ]
+
+        with patch("builtins.input", side_effect=user_inputs):
+            with patch("core.builder.get_current_platform") as mock_plat:
+                mock_plat.return_value.ensure_dependencies.return_value = None
+                captured = io.StringIO()
+                old_stdout = sys.stdout
+                try:
+                    sys.stdout = captured
+                    interactive_flow()
+                finally:
+                    sys.stdout = old_stdout
+
+                out = captured.getvalue()
+                self.assertIn("Build Configuration Review:", out)
+                self.assertIn("SpeedFlasher Build Summary", out)
+                self.assertIn("Infinix GT 20 Pro", out)
+                self.assertIn("X6871", out)
+                self.assertIn("15.1", out)
 
 
 if __name__ == "__main__":

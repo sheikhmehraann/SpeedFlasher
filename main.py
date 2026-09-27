@@ -64,109 +64,272 @@ def print_summary(res):
 
 def interactive_flow():
     try:
-        # 1. Ensure all platform requirements are present
+        # Ensure all platform requirements are present
         plat = get_current_platform()
         plat.ensure_dependencies()
 
         print("========================================================================")
         print("                              SpeedFlasher")
-        print("========================================================================\n")
+        print("========================================================================")
+        print("(Type 'b' or 'back' at any prompt to go back to the previous step)\n")
 
-        raw_path = input("Enter IMGS Path : ").strip()
-        imgs_path = clean_path(raw_path)
-        if not imgs_path or not os.path.isdir(imgs_path):
-            print(f"\nError: Directory does not exist: {imgs_path or raw_path}")
-            input("\nPress Enter to exit...")
-            sys.exit(1)
+        cfg = {
+            "imgs_path": "",
+            "partitions": {},
+            "device": "",
+            "codename": "",
+            "version": "1.0",
+            "vbmeta": "skip",
+            "maintainer": "Mehraan",
+            "zstd_level": 1,
+            "zip_level": 1,
+        }
 
-        partitions = scan_partitions(imgs_path)
-        if not partitions:
-            print(f"\nError: No partition images (.img or .img.zst) found in: {imgs_path}")
-            input("\nPress Enter to exit...")
-            sys.exit(1)
-
-        # Inspect build.prop for defaults if present
         def_device = ""
         def_codename = ""
         def_version = "1.0"
-        for root, _, files in os.walk(imgs_path):
-            for f in files:
-                if f.endswith(".prop") or f == "build.prop":
+
+        step = 1
+        return_to_review = False
+
+        while True:
+            if step == 1:
+                prompt = f"Enter IMGS Path [{cfg['imgs_path']}] : " if cfg['imgs_path'] else "Enter IMGS Path : "
+                raw = input(prompt).strip()
+                if raw.lower() in ("b", "back"):
+                    continue
+                if raw:
+                    path_cand = clean_path(raw)
+                else:
+                    path_cand = cfg['imgs_path']
+
+                if not path_cand or not os.path.isdir(path_cand):
+                    print(f"Error: Directory does not exist: {path_cand or raw}\n")
+                    continue
+
+                parts = scan_partitions(path_cand)
+                if not parts:
+                    print(f"Error: No partition images (.img or .img.zst) found in: {path_cand}\n")
+                    continue
+
+                cfg["imgs_path"] = path_cand
+                cfg["partitions"] = parts
+
+                # Inspect build.prop for defaults if not already set
+                for root, _, files in os.walk(path_cand):
+                    for f in files:
+                        if f.endswith(".prop") or f == "build.prop":
+                            try:
+                                with open(os.path.join(root, f), "r", encoding="utf-8", errors="ignore") as pf:
+                                    for line in pf:
+                                        line = line.strip()
+                                        if "=" not in line or line.startswith("#"):
+                                            continue
+                                        k, v = line.split("=", 1)
+                                        k, v = k.strip(), v.strip()
+                                        if k in ("ro.product.device", "ro.build.product", "ro.product.board") and not def_codename:
+                                            def_codename = v
+                                        elif k in ("ro.product.model", "ro.product.marketname") and not def_device:
+                                            def_device = v
+                                        elif k in ("ro.build.display.id", "ro.build.version.incremental") and def_version == "1.0":
+                                            def_version = v
+                            except OSError:
+                                pass
+
+                if not cfg["device"]:
+                    cfg["device"] = def_device or "Android Device"
+                if not cfg["codename"]:
+                    cfg["codename"] = def_codename or ""
+                if cfg["version"] == "1.0" and def_version != "1.0":
+                    cfg["version"] = def_version
+
+                if return_to_review:
+                    step = 9
+                    return_to_review = False
+                else:
+                    step = 2
+
+            elif step == 2:
+                prompt = f"Devicename [{cfg['device']}] : " if cfg['device'] else "Devicename : "
+                val = input(prompt).strip()
+                if val.lower() in ("b", "back"):
+                    step = 9 if return_to_review else 1
+                    return_to_review = False
+                    continue
+                if val:
+                    cfg["device"] = val
+                elif not cfg["device"]:
+                    cfg["device"] = "Android Device"
+
+                if return_to_review:
+                    step = 9
+                    return_to_review = False
+                else:
+                    step = 3
+
+            elif step == 3:
+                prompt = f"Codename [{cfg['codename']}] : " if cfg['codename'] else "Codename : "
+                val = input(prompt).strip()
+                if val.lower() in ("b", "back"):
+                    step = 9 if return_to_review else 2
+                    return_to_review = False
+                    continue
+                if val:
+                    cfg["codename"] = val
+
+                if return_to_review:
+                    step = 9
+                    return_to_review = False
+                else:
+                    step = 4
+
+            elif step == 4:
+                prompt = f"Version [{cfg['version']}] : " if cfg['version'] else "Version : "
+                val = input(prompt).strip()
+                if val.lower() in ("b", "back"):
+                    step = 9 if return_to_review else 3
+                    return_to_review = False
+                    continue
+                if val:
+                    cfg["version"] = val
+
+                if return_to_review:
+                    step = 9
+                    return_to_review = False
+                else:
+                    step = 5
+
+            elif step == 5:
+                prompt = f"AVB 2.0 (vbmeta) [{cfg['vbmeta']}] : "
+                val = input(prompt).strip().lower()
+                if val in ("b", "back"):
+                    step = 9 if return_to_review else 4
+                    return_to_review = False
+                    continue
+                if val:
+                    if val in ("1", "skip", "s"):
+                        cfg["vbmeta"] = "skip"
+                    elif val in ("2", "disable", "d"):
+                        cfg["vbmeta"] = "disable"
+                    elif val in ("3", "enable", "e"):
+                        cfg["vbmeta"] = "enable"
+                    else:
+                        cfg["vbmeta"] = "skip"
+
+                if return_to_review:
+                    step = 9
+                    return_to_review = False
+                else:
+                    step = 6
+
+            elif step == 6:
+                prompt = f"Maintainer [{cfg['maintainer']}] : " if cfg['maintainer'] else "Maintainer : "
+                val = input(prompt).strip()
+                if val.lower() in ("b", "back"):
+                    step = 9 if return_to_review else 5
+                    return_to_review = False
+                    continue
+                if val:
+                    cfg["maintainer"] = val
+
+                if return_to_review:
+                    step = 9
+                    return_to_review = False
+                else:
+                    step = 7
+
+            elif step == 7:
+                prompt = f"Ztsd Compression (0-22) [{cfg['zstd_level']}] : "
+                val = input(prompt).strip()
+                if val.lower() in ("b", "back"):
+                    step = 9 if return_to_review else 6
+                    return_to_review = False
+                    continue
+                if val:
                     try:
-                        with open(os.path.join(root, f), "r", encoding="utf-8", errors="ignore") as pf:
-                            for line in pf:
-                                line = line.strip()
-                                if "=" not in line or line.startswith("#"):
-                                    continue
-                                k, v = line.split("=", 1)
-                                k, v = k.strip(), v.strip()
-                                if k in ("ro.product.device", "ro.build.product", "ro.product.board") and not def_codename:
-                                    def_codename = v
-                                elif k in ("ro.product.model", "ro.product.marketname") and not def_device:
-                                    def_device = v
-                                elif k in ("ro.build.display.id", "ro.build.version.incremental") and def_version == "1.0":
-                                    def_version = v
-                    except OSError:
-                        pass
+                        lvl = int(val)
+                        if 0 <= lvl <= 22:
+                            cfg["zstd_level"] = lvl
+                        else:
+                            print("Notice: Level must be between 0 and 22. Keeping current value.")
+                    except ValueError:
+                        print("Notice: Invalid number. Keeping current value.")
 
-        devicename_prompt = f"Devicename [{def_device}] : " if def_device else "Devicename : "
-        codename_prompt = f"Codename [{def_codename}] : " if def_codename else "Codename : "
-        version_prompt = f"Version [{def_version}] : " if def_version != "1.0" else "Version : "
+                if return_to_review:
+                    step = 9
+                    return_to_review = False
+                else:
+                    step = 8
 
-        devicename_input = input(devicename_prompt).strip()
-        devicename = devicename_input or def_device or "Android Device"
+            elif step == 8:
+                prompt = f"Zip Compression (0-9) [{cfg['zip_level']}] : "
+                val = input(prompt).strip()
+                if val.lower() in ("b", "back"):
+                    step = 9 if return_to_review else 7
+                    return_to_review = False
+                    continue
+                if val:
+                    try:
+                        lvl = int(val)
+                        if 0 <= lvl <= 9:
+                            cfg["zip_level"] = lvl
+                        else:
+                            print("Notice: Level must be between 0 and 9. Keeping current value.")
+                    except ValueError:
+                        print("Notice: Invalid number. Keeping current value.")
 
-        codename_input = input(codename_prompt).strip()
-        codename = codename_input or def_codename or ""
+                step = 9
 
-        version_input = input(version_prompt).strip()
-        version = version_input or def_version
-
-        avb_raw = input("AVB 2.0 (vbmeta) : ").strip().lower()
-        if avb_raw in ("1", "skip", "s", ""):
-            avb_mode = "skip"
-        elif avb_raw in ("2", "disable", "d"):
-            avb_mode = "disable"
-        elif avb_raw in ("3", "enable", "e"):
-            avb_mode = "enable"
-        else:
-            avb_mode = "skip"
-
-        maintainer_input = input("Maintainer : ").strip()
-        maintainer = maintainer_input or "Mehraan"
-
-        zstd_raw = input("Ztsd Compression (0-22) : ").strip()
-        try:
-            zstd_level = int(zstd_raw) if zstd_raw else 1
-        except ValueError:
-            zstd_level = 1
-
-        zip_raw = input("Zip Compression (0-9) : ").strip()
-        try:
-            zip_level = int(zip_raw) if zip_raw else 1
-        except ValueError:
-            zip_level = 1
+            elif step == 9:
+                print("\n------------------------------------------------------------------------")
+                print("Build Configuration Review:")
+                print(f"  1. IMGS Path       : {cfg['imgs_path']}")
+                print(f"  2. Devicename      : {cfg['device']}")
+                print(f"  3. Codename        : {cfg['codename']}")
+                print(f"  4. Version         : {cfg['version']}")
+                print(f"  5. AVB 2.0         : {cfg['vbmeta']}")
+                print(f"  6. Maintainer      : {cfg['maintainer']}")
+                print(f"  7. ZSTD Level      : {cfg['zstd_level']}")
+                print(f"  8. ZIP Level       : {cfg['zip_level']}")
+                print("------------------------------------------------------------------------")
+                ans = input("Proceed with build? (Y/n, 1-8 to edit, 'b' to go back) [Y] : ").strip().lower()
+                if ans in ("", "y", "yes"):
+                    break
+                elif ans in ("b", "back"):
+                    step = 8
+                    continue
+                elif ans in ("n", "no", "q", "quit", "exit"):
+                    print("\n[!] Build cancelled by user.")
+                    input("\nPress Enter to exit...")
+                    sys.exit(0)
+                elif ans in ("1", "2", "3", "4", "5", "6", "7", "8"):
+                    step = int(ans)
+                    return_to_review = True
+                    continue
+                else:
+                    print("Invalid choice. Enter 'Y' to build, 'n' to cancel, 1-8 to edit a field, or 'b' to go back.")
+                    continue
 
         # Automatically generate output destination into output folder
         out_dir = os.path.join(_ROOT_DIR, "output")
         os.makedirs(out_dir, exist_ok=True)
-        out_name = f"{version}-{codename}-Flashable.zip" if codename else f"{version}-Flashable.zip"
+        out_name = f"{cfg['version']}-{cfg['codename']}-Flashable.zip" if cfg['codename'] else f"{cfg['version']}-Flashable.zip"
         output_zip = os.path.join(out_dir, out_name)
 
         print(f"\n[*] Output target: {output_zip}")
         print("[*] Starting package build...")
 
         res = FlashableBuilder.build(
-            imgs_dir=imgs_path,
-            partitions=partitions,
+            imgs_dir=cfg["imgs_path"],
+            partitions=cfg["partitions"],
             output_zip=output_zip,
-            device=devicename,
-            firmware=version,
-            codename=codename,
-            maintainer=maintainer,
-            vbmeta_option=avb_mode,
-            zstd_level=zstd_level,
-            zip_level=zip_level,
+            device=cfg["device"],
+            firmware=cfg["version"],
+            codename=cfg["codename"],
+            maintainer=cfg["maintainer"],
+            vbmeta_option=cfg["vbmeta"],
+            zstd_level=cfg["zstd_level"],
+            zip_level=cfg["zip_level"],
             include_fastboot=True
         )
 
