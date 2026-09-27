@@ -2,8 +2,32 @@ from typing import List
 
 
 class TermuxInstaller:
-    @staticmethod
+    @classmethod
+    def _flash_block(cls, part: str, use_zstd: bool) -> List[str]:
+        if use_zstd:
+            return [
+                f'if [ -f "{part}.img.zst" ]; then',
+                f'    echo "Flashing {part}..."',
+                f'    zstd -d -q -f "{part}.img.zst" -o "{part}.img"',
+                f'    if [ -f "{part}.img" ]; then',
+                f'        $FASTBOOT flash "{part}" "{part}.img"',
+                f'        rm -f "{part}.img"',
+                '    fi',
+                f'elif [ -f "{part}.img" ]; then',
+                f'    echo "Flashing {part}..."',
+                f'    $FASTBOOT flash "{part}" "{part}.img"',
+                'fi',
+            ]
+        return [
+            f'if [ -f "{part}.img" ]; then',
+            f'    echo "Flashing {part}..."',
+            f'    $FASTBOOT flash "{part}" "{part}.img"',
+            'fi',
+        ]
+
+    @classmethod
     def generate_shell_script(
+        cls,
         device: str,
         codename: str,
         firmware_imgs: List[str],
@@ -21,6 +45,10 @@ class TermuxInstaller:
             '    echo "[*] Installing android-tools in Termux..."',
             "    pkg update -y && pkg install -y android-tools",
             "fi",
+            'if ! command -v zstd >/dev/null 2>&1; then',
+            '    echo "[*] Installing zstd in Termux..."',
+            "    pkg install -y zstd",
+            "fi",
             'FASTBOOT="fastboot"',
             "",
             'echo "=============================================="',
@@ -35,14 +63,13 @@ class TermuxInstaller:
             'echo "Flashing firmware partitions..."',
         ]
 
-        ext = ".img.zst" if use_zstd else ".img"
         for fw in firmware_imgs:
-            lines.append(f'[ -f "{fw}{ext}" ] && $FASTBOOT flash "{fw}" "{fw}{ext}" || true')
+            lines.extend(cls._flash_block(fw, use_zstd))
 
         lines.append('echo ""')
         lines.append('echo "Flashing system bootchain partitions..."')
         for sys_part in system_imgs:
-            lines.append(f'[ -f "{sys_part}{ext}" ] && $FASTBOOT flash "{sys_part}" "{sys_part}{ext}" || true')
+            lines.extend(cls._flash_block(sys_part, use_zstd))
 
         if super_imgs:
             lines.extend([
@@ -53,7 +80,7 @@ class TermuxInstaller:
                 'echo "Flashing dynamic partitions in fastbootd..."',
             ])
             for sp in super_imgs:
-                lines.append(f'[ -f "{sp}{ext}" ] && $FASTBOOT flash "{sp}" "{sp}{ext}" || true')
+                lines.extend(cls._flash_block(sp, use_zstd))
 
         lines.extend([
             'echo ""',

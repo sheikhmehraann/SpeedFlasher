@@ -34,7 +34,7 @@ class WindowsPlatform:
     def get_fastboot_assets(cls) -> list:
         bin_dir = cls.get_bin_dir()
         assets = []
-        for name in ("fastboot.exe", "AdbWinApi.dll", "AdbWinUsbApi.dll"):
+        for name in ("fastboot.exe", "AdbWinApi.dll", "AdbWinUsbApi.dll", "zstd.exe"):
             p = os.path.join(bin_dir, name)
             if os.path.isfile(p):
                 assets.append(p)

@@ -34,9 +34,10 @@ class LinuxPlatform:
     def get_fastboot_assets(cls) -> list:
         bin_dir = cls.get_bin_dir()
         assets = []
-        p = os.path.join(bin_dir, "fastboot")
-        if os.path.isfile(p):
-            assets.append(p)
+        for name in ("fastboot", "zstd"):
+            p = os.path.join(bin_dir, name)
+            if os.path.isfile(p):
+                assets.append(p)
         return assets
 
     @classmethod

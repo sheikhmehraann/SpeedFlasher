@@ -79,6 +79,14 @@ def compress_single_image_worker(task: Tuple[str, str, str, int, int, int, str])
     return name, raw_size
 
 
+class BuildResult(str):
+    def __new__(cls, path: str, **kwargs):
+        obj = super().__new__(cls, path)
+        for k, v in kwargs.items():
+            setattr(obj, k, v)
+        return obj
+
+
 class FlashableBuilder:
     @classmethod
     def package_zip(cls, work_dir: str, output_zip: str, zip_level: int = 1):
@@ -341,4 +349,18 @@ class FlashableBuilder:
 
         size_mb = os.path.getsize(output_zip) / (1024 * 1024)
         print(f"[+] Package ready: {output_zip} ({size_mb:.2f} MB)")
-        return output_zip
+        return BuildResult(
+            output_zip,
+            output_zip=output_zip,
+            size_mb=size_mb,
+            device=device,
+            codename=codename,
+            firmware=firmware,
+            maintainer=maintainer,
+            vbmeta_option=vbmeta_option,
+            zstd_level=zstd_level,
+            zip_level=zip_level,
+            super_partitions=[p[0] for p in (super_specs + tr_specs)],
+            system_partitions=system_imgs,
+            firmware_partitions=firmware_imgs
+        )
