@@ -13,12 +13,13 @@ class AvbManager:
         if self.mode not in ["disable", "enable", "skip"]:
             raise ValueError(f"Invalid AVB mode: '{mode}'. Must be 'disable', 'enable', or 'skip'.")
 
-    def patch_vbmeta_image(self, vbmeta_path: Path) -> bool:
-        if self.mode == "skip" or not vbmeta_path.exists():
+    def patch_vbmeta_image(self, vbmeta_path) -> bool:
+        path = Path(vbmeta_path)
+        if self.mode == "skip" or not path.exists():
             return False
 
         try:
-            with open(vbmeta_path, "r+b") as f:
+            with open(path, "r+b") as f:
                 data = f.read(256)
                 if not data.startswith(AVB_MAGIC):
                     return False

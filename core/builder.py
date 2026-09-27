@@ -6,7 +6,7 @@ import time
 import zipfile
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from .avb import AvbManager
 from .partitions import scan_partitions, get_zstd_uncompressed_size
@@ -104,7 +104,7 @@ class FlashableBuilder:
         compression = zipfile.ZIP_STORED if zip_level == 0 else zipfile.ZIP_DEFLATED
         kwargs = {"compresslevel": zip_level} if zip_level > 0 else {}
 
-        with zipfile.ZipFile(abs_output, "w", compression=compression, **kwargs) as z:
+        with zipfile.ZipFile(abs_output, "w", compression=compression, allowZip64=True, **kwargs) as z:
             for root, dirs, files in os.walk(work_dir):
                 for d in dirs:
                     dp = os.path.join(root, d)
@@ -126,28 +126,30 @@ class FlashableBuilder:
                         rp.endswith(".sh")
                     )
 
-                    zinfo = zipfile.ZipInfo(filename=rp)
                     st = os.stat(fp)
+                    zinfo = zipfile.ZipInfo(filename=rp)
                     zinfo.date_time = time.localtime(st.st_mtime)[:6]
                     zinfo.compress_type = compression
                     zinfo.create_system = 3
+                    zinfo.file_size = st.st_size
 
                     if is_exec:
                         zinfo.external_attr = (0o100755) << 16
                     else:
                         zinfo.external_attr = (0o100644) << 16
 
-                    with open(fp, "rb") as src_f, z.open(zinfo, mode="w") as dst_f:
+                    with open(fp, "rb") as src_f, z.open(zinfo, mode="w", force_zip64=True) as dst_f:
                         shutil.copyfileobj(src_f, dst_f, length=8 * 1024 * 1024)
 
     @classmethod
     def build(
         cls,
-        imgs_dir: str,
         output_zip: str,
         device: str,
         firmware: str,
         codename: str,
+        imgs_dir: Optional[str] = None,
+        partitions: Optional[Dict[str, Dict[str, Any]]] = None,
         maintainer: str = "Mehraan",
         vbmeta_option: str = "skip",
         zstd_level: int = 1,
@@ -157,12 +159,16 @@ class FlashableBuilder:
         root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         host_zstd = get_host_zstd()
 
-        print(f"[*] Scanning partitions in {imgs_dir}...")
-        partitions = scan_partitions(imgs_dir, zstd_bin=host_zstd)
-        if not partitions:
-            raise ValueError(f"No valid partition images (.img or .img.zst) found in {imgs_dir}")
+        if partitions is None:
+            if not imgs_dir:
+                raise ValueError("Either imgs_dir or partitions dictionary must be provided.")
+            print(f"[*] Scanning partitions in {imgs_dir}...")
+            partitions = scan_partitions(imgs_dir, zstd_bin=host_zstd)
 
-        print(f"[+] Found {len(partitions)} partition(s): {', '.join(sorted(partitions.keys()))}")
+        if not partitions:
+            raise ValueError("No valid partition images found.")
+
+        print(f"[+] Discovered {len(partitions)} partition(s): {', '.join(sorted(partitions.keys()))}")
 
         work_dir = os.path.abspath("zip_workspace")
         staging_dir = os.path.abspath("temp_staging")
@@ -198,8 +204,17 @@ class FlashableBuilder:
         for name, info in partitions.items():
             src_path = info["path"]
             is_zst = info["is_zstd"]
-            raw_size = info["raw_size"]
-            ptype = info["type"]
+            raw_size = info.get("raw_size", 0)
+            if not raw_size:
+                if is_zst:
+                    raw_size = get_zstd_uncompressed_size(src_path, zstd_bin=host_zstd)
+                else:
+                    raw_size = os.path.getsize(src_path)
+
+            ptype = info.get("type")
+            if not ptype:
+                from .partitions import classify_partition
+                ptype = classify_partition(name, src_path, is_zst)
 
             if ptype == "super_tr":
                 tr_specs.append((name, raw_size))
@@ -230,7 +245,7 @@ class FlashableBuilder:
             tasks_with_threads = [
                 (t[0], t[1], t[2], t[3], t[4], threads_per_worker, host_zstd) for t in compress_tasks
             ]
-            print(f"[*] Compressing {len(tasks_with_threads)} partition image(s) to .zst (level {zstd_level}, {workers} workers x {threads_per_worker}T)...")
+            print(f"[*] Compressing {len(tasks_with_threads)} partition(s) with Zstandard (level {zstd_level}, {workers} workers x {threads_per_worker}T)...")
             with ProcessPoolExecutor(max_workers=workers) as executor:
                 futures = [executor.submit(compress_single_image_worker, t) for t in tasks_with_threads]
                 for f in as_completed(futures):
@@ -306,11 +321,11 @@ class FlashableBuilder:
             except OSError:
                 pass
 
-        # Build final ZIP
+        # Package ZIP
         cls.package_zip(work_dir, output_zip, zip_level=zip_level)
         shutil.rmtree(work_dir, ignore_errors=True)
         shutil.rmtree(staging_dir, ignore_errors=True)
 
         size_mb = os.path.getsize(output_zip) / (1024 * 1024)
-        print(f"[+] Package created: {output_zip} ({size_mb:.2f} MB)")
+        print(f"[+] Package ready: {output_zip} ({size_mb:.2f} MB)")
         return output_zip
