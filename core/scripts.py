@@ -1,0 +1,598 @@
+from typing import List, Tuple
+
+
+def generate_update_binary(
+    device: str,
+    firmware: str,
+    codename: str,
+    super_specs: List[Tuple[str, int]],
+    system_imgs: List[str],
+    firmware_imgs: List[str],
+    tr_specs: List[Tuple[str, int]],
+    maintainer: str = "Mehraan",
+    vbmeta_option: str = "skip",
+    use_zstd: bool = True
+) -> str:
+    lines = [
+        "#!/sbin/sh",
+        "OUTFD=/proc/self/fd/$2",
+        'ZIPFILE="$3"',
+        "",
+        "ui_print() {",
+        '    printf \'ui_print %s\\nui_print\\n\' "$1" >>"$OUTFD"',
+        "}",
+        "",
+        'export PATH="/tmp/META-INF/bin:/tmp/META-INF:/sbin:/system/bin:/bin:$PATH"',
+        "",
+        'LPTOOLS="/tmp/META-INF/bin/lptools"',
+        '[ ! -f "$LPTOOLS" ] && LPTOOLS="lptools"',
+        "",
+        'ZSTD_BIN="/tmp/META-INF/zstd"',
+        '[ ! -f "$ZSTD_BIN" ] && ZSTD_BIN="zstd"',
+        "",
+        'AVB_BIN="/tmp/META-INF/bin/avbctl"',
+        '[ ! -f "$AVB_BIN" ] && AVB_BIN="avbctl"',
+        "",
+        "find_block_device() {",
+        '    name="$1"',
+        '    for base in /dev/block/by-name /dev/block/bootdevice/by-name /dev/block/platform/*/by-name /dev/block/platform/*/*/by-name; do',
+        '        if [ -e "$base/$name" ]; then',
+        '            echo "$base/$name"',
+        '            return 0',
+        '        fi',
+        '    done',
+        '    echo "/dev/block/by-name/$name"',
+        "}",
+        "",
+        "find_mapper_device() {",
+        '    name="$1"',
+        '    for base in /dev/block/mapper /dev/mapper /dev/block/by-name; do',
+        '        if [ -b "$base/$name" ] || [ -e "$base/$name" ]; then',
+        '            echo "$base/$name"',
+        '            return 0',
+        '        fi',
+        '    done',
+        '    $LPTOOLS map "$name" 2>/dev/null || true',
+        '    for base in /dev/block/mapper /dev/mapper /dev/block/by-name; do',
+        '        if [ -b "$base/$name" ] || [ -e "$base/$name" ]; then',
+        '            echo "$base/$name"',
+        '            return 0',
+        '        fi',
+        '    done',
+        '    echo "/dev/block/mapper/$name"',
+        "}",
+        "",
+        "flash_partition() {",
+        '    src="$1"; dest="$2"; msg="$3"',
+        '    if [ "$#" -lt 3 ]; then',
+        '        partition_name=$(basename "$dest")',
+        '        ui_print "- Flashing partition $partition_name"',
+        '    elif [ -n "$msg" ]; then',
+        '        ui_print "$msg"',
+        '    fi',
+        '    unzip -p "$ZIPFILE" "$src" >"$dest" || {',
+        '        ui_print "Error: Failed to flash $src to $dest"',
+        '        exit 1',
+        '    }',
+        "}",
+        "",
+        "flash_partition_zstd() {",
+        '    src="$1"; dest="$2"',
+        '    partition_name=$(basename "$dest")',
+        '    ui_print "- Flashing partition $partition_name"',
+        '    unzip -p "$ZIPFILE" "$src" | $ZSTD_BIN -c -d -T0 --no-check >"$dest" || {',
+        '        ui_print "Error: Failed to flash compressed $src to $dest"',
+        '        exit 1',
+        '    }',
+        "}",
+        "",
+        "flash_partition_both_slots() {",
+        '    img_file="$1"; base_name="$2"',
+        '    dev_a=$(find_block_device "${base_name}_a")',
+        '    dev_b=$(find_block_device "${base_name}_b")',
+        '    if [ -e "$dev_a" ] || [ -e "$dev_b" ]; then',
+        '        ui_print "- Flashing partition ${base_name} to both slots"',
+        '        [ -e "$dev_a" ] && { unzip -p "$ZIPFILE" "$img_file" >"$dev_a" || { ui_print "Error: Failed flashing $img_file to $dev_a"; exit 1; }; }',
+        '        [ -e "$dev_b" ] && { unzip -p "$ZIPFILE" "$img_file" >"$dev_b" || { ui_print "Error: Failed flashing $img_file to $dev_b"; exit 1; }; }',
+        '    else',
+        '        dev_single=$(find_block_device "${base_name}")',
+        '        if [ -e "$dev_single" ]; then',
+        '            ui_print "- Flashing partition ${base_name}"',
+        '            unzip -p "$ZIPFILE" "$img_file" >"$dev_single" || { ui_print "Error: Failed flashing $img_file to $dev_single"; exit 1; }',
+        '        else',
+        '            ui_print "- Flashing partition ${base_name}"',
+        '            unzip -p "$ZIPFILE" "$img_file" >"/dev/block/by-name/${base_name}" 2>/dev/null || true',
+        '        fi',
+        '    fi',
+        "}",
+        "",
+        "flash_partition_zstd_both_slots() {",
+        '    img_file="$1"; base_name="$2"',
+        '    dev_a=$(find_block_device "${base_name}_a")',
+        '    dev_b=$(find_block_device "${base_name}_b")',
+        '    if [ -e "$dev_a" ] || [ -e "$dev_b" ]; then',
+        '        ui_print "- Flashing partition ${base_name} to both slots"',
+        '        [ -e "$dev_a" ] && { unzip -p "$ZIPFILE" "$img_file" | $ZSTD_BIN -c -d -T0 --no-check >"$dev_a" || { ui_print "Error: Failed flashing $img_file to $dev_a"; exit 1; }; }',
+        '        [ -e "$dev_b" ] && { unzip -p "$ZIPFILE" "$img_file" | $ZSTD_BIN -c -d -T0 --no-check >"$dev_b" || { ui_print "Error: Failed flashing $img_file to $dev_b"; exit 1; }; }',
+        '    else',
+        '        dev_single=$(find_block_device "${base_name}")',
+        '        if [ -e "$dev_single" ]; then',
+        '            ui_print "- Flashing partition ${base_name}"',
+        '            unzip -p "$ZIPFILE" "$img_file" | $ZSTD_BIN -c -d -T0 --no-check >"$dev_single" || { ui_print "Error: Failed flashing $img_file to $dev_single"; exit 1; }',
+        '        else',
+        '            ui_print "- Flashing partition ${base_name}"',
+        '            unzip -p "$ZIPFILE" "$img_file" | $ZSTD_BIN -c -d -T0 --no-check >"/dev/block/by-name/${base_name}" 2>/dev/null || true',
+        '        fi',
+        '    fi',
+        "}",
+        "",
+        "getVolumeKey() {",
+        '    ui_print "- Listening to volume keys. Press [+] for Yes and [-] for No"',
+        "    while true; do",
+        '        keyInfo=$(getevent -qlc 1 | grep KEY_VOLUME)',
+        '        [ -z "$keyInfo" ] && continue',
+        '        isUpKey=$(printf \'%s\\n\' "$keyInfo" | grep KEY_VOLUMEUP)',
+        '        if [ -n "$isUpKey" ]; then return 0; else return 1; fi',
+        "    done",
+        "}",
+        "",
+        "checkDevice() {",
+        '    myDevice=$(getprop ro.product.device)',
+        '    [ -z "$myDevice" ] && myDevice=$(getprop ro.build.product)',
+        '    [ -z "$myDevice" ] && myDevice=$(getprop ro.product.name)',
+        f'    romDevice="{codename}"',
+        '    if [ -n "$romDevice" ] && [ -n "$myDevice" ] && [ -z "$(echo "$myDevice" | grep -i "$romDevice")" ]; then',
+        '        ui_print "- Device verification mismatch! Current: $myDevice, Expected: $romDevice"',
+        '        ui_print "- Flashing wrong package may cause bricking. Do you wish to continue?"',
+        '        if ! getVolumeKey; then ui_print "- Aborted by user."; exit 1;',
+        '        else ui_print "- Continuing installation..."; fi',
+        '    else',
+        f'        ui_print "- Target Device: Verified {codename or device}"',
+        '    fi',
+        "}",
+        "",
+        "checkExit() {",
+        '    status=$?',
+        '    msg="$1"',
+        '    if [ "$status" -ne 0 ]; then',
+        '        if [ -n "$msg" ]; then',
+        '            ui_print "Error: $msg (exit status $status)"',
+        '        else',
+        '            ui_print "Error: Dynamic partition operation failed."',
+        '        fi',
+        '        exit 1',
+        '    fi',
+        "}",
+        "",
+        "unmountPartitions() {",
+        '    umount -f -l /system /system_root /vendor /product /system_ext /vendor_dlkm /odm_dlkm /odm \\',
+        '                 /tr_carrier /tr_company /tr_mi /tr_preload /tr_product /tr_region /tr_theme \\',
+        '                 /tr_manifest /tr_misc /my_product /my_stock /my_heytap /my_carrier /my_region \\',
+        '                 /my_manifest /my_preload /my_company /my_engineering /my_bigball /cust /prism /optics /mnt/* 2>/dev/null || true',
+        "}",
+        "",
+        "manage_logical_partition() {",
+        '    operation="$1"',
+        '    partition="$2"',
+        '    size="$3"',
+        '    slot="$4"',
+        '    case "$operation" in',
+        '        clear)',
+        '            $LPTOOLS unmap "$partition$slot" 2>/dev/null || true',
+        '            $LPTOOLS remove "$partition$slot" 2>/dev/null || true',
+        '            ;;',
+        '        create)',
+        '            $LPTOOLS create "$partition$slot" "$size" || checkExit "Failed to create logical partition $partition$slot"',
+        '            ;;',
+        '        create_optional)',
+        '            [ -n "$slot" ] && { $LPTOOLS create "$partition$slot" "$size" 2>/dev/null || true; }',
+        '            ;;',
+        '        map)',
+        '            [ -e "/dev/block/mapper/$partition$slot" ] || [ -e "/dev/mapper/$partition$slot" ] || { $LPTOOLS map "$partition$slot" 2>/dev/null || true; }',
+        '            ;;',
+        '        unmap_map)',
+        '            $LPTOOLS unmap "$partition$slot" 2>/dev/null || true',
+        '            $LPTOOLS map "$partition$slot" 2>/dev/null || true',
+        '            ;;',
+        '    esac',
+        "}",
+        "",
+        "create_partitions_for_slot() {",
+        '    target_slot="$1"',
+        '    other_slot="$2"',
+        '    shift 2',
+        '    for spec in "$@"; do',
+        '        partition="${spec%%:*}"',
+        '        size="${spec#*:}"',
+        '        manage_logical_partition "create" "$partition" "$size" "$target_slot"',
+        '        if [ -n "$other_slot" ]; then',
+        '            manage_logical_partition "create_optional" "$partition" "0" "$other_slot"',
+        '        fi',
+        '    done',
+        "}",
+        "",
+        "process_partitions_for_slots() {",
+        '    operation="$1"',
+        '    shift',
+        '    for partition in "$@"; do',
+        '        if [ "$IS_AB" -eq 1 ]; then',
+        '            manage_logical_partition "$operation" "$partition" "" "_a"',
+        '            manage_logical_partition "$operation" "$partition" "" "_b"',
+        '        else',
+        '            manage_logical_partition "$operation" "$partition" "" ""',
+        '        fi',
+        '    done',
+        "}",
+        "",
+        "process_partitions_for_slot() {",
+        '    operation="$1"',
+        '    slot="$2"',
+        '    shift 2',
+        '    for partition in "$@"; do',
+        '        manage_logical_partition "$operation" "$partition" "" "$slot"',
+        '    done',
+        "}",
+        "",
+        'unzip -o "$ZIPFILE" META-INF/zstd -d /tmp >/dev/null 2>&1 || true',
+        'unzip -o "$ZIPFILE" META-INF/bin/lptools -d /tmp >/dev/null 2>&1 || true',
+        'unzip -o "$ZIPFILE" META-INF/bin/avbctl -d /tmp >/dev/null 2>&1 || true',
+        "chmod 0755 /tmp/META-INF/zstd /tmp/META-INF/bin/lptools /tmp/META-INF/bin/avbctl 2>/dev/null || true",
+        "",
+        'ui_print "============================================"',
+        'ui_print "              SpeedFlasher"',
+        'ui_print "============================================"',
+        'ui_print " "',
+        f'ui_print "Device: {device}"',
+        f'ui_print "Codename: {codename}"',
+        f'ui_print "Version: {firmware}"',
+        f'ui_print "Maintainer: {maintainer}"',
+        'ui_print "============================================"',
+        'ui_print " "',
+        "checkDevice",
+        "unmountPartitions",
+        "",
+        'SLOT=$(getprop ro.boot.slot_suffix)',
+        'IS_AB=1',
+        'OTHER_SLOT="_a"',
+        '[ "$SLOT" = "_a" ] && OTHER_SLOT="_b"',
+        'slot_display="A"',
+        '[ "$SLOT" = "_b" ] && slot_display="B"',
+        'if [ -z "$SLOT" ]; then',
+        '    IS_AB=0',
+        '    slot_display="A-Only"',
+        '    SLOT=""',
+        '    OTHER_SLOT=""',
+        'fi',
+        'ui_print "- Active Boot Slot: Slot ${slot_display}"',
+        "$LPTOOLS clear-cow 2>/dev/null || true",
+        ""
+    ]
+
+    if firmware_imgs:
+        lines.append('ui_print " "')
+        lines.append('ui_print "Patching firmware to both slots"')
+        for fw in firmware_imgs:
+            if use_zstd:
+                lines.append(f'flash_partition_zstd_both_slots "{fw}.img.zst" "{fw}"')
+            else:
+                lines.append(f'flash_partition_both_slots "{fw}.img" "{fw}"')
+        lines.append("")
+
+    if system_imgs:
+        lines.append('ui_print " "')
+        lines.append('ui_print "Patching system partitions"')
+        for sys_part in system_imgs:
+            if use_zstd:
+                lines.append(f'flash_partition_zstd_both_slots "{sys_part}.img.zst" "{sys_part}"')
+            else:
+                lines.append(f'flash_partition_both_slots "{sys_part}.img" "{sys_part}"')
+        lines.append("")
+
+    if vbmeta_option == "disable":
+        lines.extend([
+            'ui_print " "',
+            'ui_print "- Configuring AVB 2.0 (Vbmeta)"',
+            'if [ -f "$AVB_BIN" ] || which avbctl >/dev/null 2>&1; then',
+            '    VERITY=$($AVB_BIN get-verity 2>/dev/null)',
+            '    if echo "$VERITY" | grep -qi "disabled"; then',
+            '        ui_print "  - AVB Status: Already Disabled"',
+            '    else',
+            '        $AVB_BIN --force disable-verity >/dev/null 2>&1 || true',
+            '        $AVB_BIN --force disable-verification >/dev/null 2>&1 || true',
+            '        ui_print "  - AVB Status: Disabled"',
+            '    fi',
+            'fi',
+            ""
+        ])
+    elif vbmeta_option == "enable":
+        lines.extend([
+            'ui_print " "',
+            'ui_print "- Configuring AVB 2.0 (Vbmeta)"',
+            'if [ -f "$AVB_BIN" ] || which avbctl >/dev/null 2>&1; then',
+            '    VERITY=$($AVB_BIN get-verity 2>/dev/null)',
+            '    if echo "$VERITY" | grep -qi "enabled"; then',
+            '        ui_print "  - AVB Status: Already Enabled"',
+            '    else',
+            '        $AVB_BIN --force enable-verity >/dev/null 2>&1 || true',
+            '        $AVB_BIN --force enable-verification >/dev/null 2>&1 || true',
+            '        ui_print "  - AVB Status: Enabled"',
+            '    fi',
+            'fi',
+            ""
+        ])
+
+    all_dyn_specs = super_specs + tr_specs
+    if all_dyn_specs:
+        lines.append('ui_print " "')
+        lines.append('ui_print "Patching dynamic super partitions"')
+        clear_parts = " ".join(f'"{p[0]}"' for p in all_dyn_specs)
+        lines.append(f'process_partitions_for_slots "clear" {clear_parts}')
+        lines.append("")
+
+        create_specs = " ".join(f'"{p[0]}:{p[1]}"' for p in all_dyn_specs)
+        lines.append(f'create_partitions_for_slot "$SLOT" "$OTHER_SLOT" {create_specs}')
+        lines.append("")
+
+        for part, _ in all_dyn_specs:
+            if use_zstd:
+                lines.append(f'flash_partition_zstd "{part}.img.zst" "$(find_mapper_device {part}$SLOT)"')
+            else:
+                lines.append(f'flash_partition "{part}.img" "$(find_mapper_device {part}$SLOT)"')
+
+        lines.append("")
+        lines.append("sync")
+        map_parts = " ".join(f'"{p[0]}"' for p in all_dyn_specs)
+        lines.append(f'process_partitions_for_slot "unmap_map" "$SLOT" {map_parts}')
+
+    lines.extend([
+        "",
+        'ui_print " "',
+        'ui_print "============================================"',
+        'ui_print "           Installed Successfully"',
+        'ui_print "============================================"',
+        "exit 0"
+    ])
+    return "\n".join(lines)
+
+
+def generate_fastboot_windows(
+    device: str,
+    codename: str,
+    firmware_imgs: List[str],
+    system_imgs: List[str],
+    super_imgs: List[str],
+    use_zstd: bool = False
+) -> str:
+    lines = [
+        "@echo off",
+        "setlocal enabledelayedexpansion",
+        "cd /d \"%~dp0\"",
+        "title SpeedFlasher Fastboot Installer",
+        "set fastboot=bin\\fastboot\\fastboot.exe",
+        "if not exist %fastboot% (",
+        "    where fastboot >nul 2>nul",
+        "    if %errorlevel% equ 0 (",
+        "        set fastboot=fastboot",
+        "    ) else (",
+        "        echo [Error] fastboot not found.",
+        "        pause",
+        "        exit /b 1",
+        "    )",
+        ")",
+        "echo ==============================================",
+        "echo          SpeedFlasher Fastboot Installer",
+        "echo ==============================================",
+        f"echo Target Device: {device} ({codename})",
+        "echo.",
+        "echo Checking connected device...",
+        "%fastboot% devices",
+        "echo.",
+    ]
+
+    if codename:
+        lines.extend([
+            f'%fastboot% getvar product 2>&1 | findstr /i "{codename}" >nul',
+            "if %errorlevel% neq 0 (",
+            f'    echo [Warning] Connected device does not match expected codename ({codename}).',
+            '    set /p CONT="Do you want to continue anyway? (y/n): "',
+            '    if /i "!CONT!" neq "y" exit /b 1',
+            ")",
+            "echo.",
+        ])
+
+    lines.extend([
+        'set /p WIPE="Format userdata after flashing? (y/n): "',
+        "echo.",
+        "echo Flashing firmware partitions...",
+    ])
+
+    ext = ".img.zst" if use_zstd else ".img"
+    for fw in firmware_imgs:
+        lines.append(f"if exist {fw}{ext} %fastboot% flash {fw} {fw}{ext}")
+
+    lines.append("echo.")
+    lines.append("echo Flashing system partitions...")
+    for sys_part in system_imgs:
+        lines.append(f"if exist {sys_part}{ext} %fastboot% flash {sys_part} {sys_part}{ext}")
+
+    if super_imgs:
+        lines.extend([
+            "echo.",
+            "echo Rebooting to fastbootd for dynamic partitions...",
+            "%fastboot% reboot fastboot",
+            "echo Waiting for fastbootd...",
+            "timeout /t 5 >nul",
+            "echo Flashing dynamic partitions in fastbootd...",
+        ])
+        for sp in super_imgs:
+            lines.append(f"if exist {sp}{ext} %fastboot% flash {sp} {sp}{ext}")
+
+    lines.extend([
+        "echo.",
+        'if /i "%WIPE%" == "y" (',
+        "    echo Wiping userdata...",
+        "    %fastboot% -w",
+        ")",
+        "echo.",
+        "echo Rebooting to system...",
+        "%fastboot% reboot",
+        "echo ==============================================",
+        "echo            Flashing Complete",
+        "echo ==============================================",
+        "pause"
+    ])
+    return "\r\n".join(lines)
+
+
+def generate_fastboot_linux(
+    device: str,
+    codename: str,
+    firmware_imgs: List[str],
+    system_imgs: List[str],
+    super_imgs: List[str],
+    use_zstd: bool = False
+) -> str:
+    lines = [
+        "#!/usr/bin/env bash",
+        "set -e",
+        'SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"',
+        'cd "$SCRIPT_DIR"',
+        "",
+        'FASTBOOT="bin/fastboot/fastboot"',
+        'if [ ! -x "$FASTBOOT" ]; then',
+        '    if command -v fastboot >/dev/null 2>&1; then',
+        '        FASTBOOT="fastboot"',
+        "    else",
+        '        echo "[Error] fastboot not found."',
+        "        exit 1",
+        "    fi",
+        "fi",
+        "",
+        'echo "=============================================="',
+        'echo "          SpeedFlasher Fastboot Installer"',
+        'echo "=============================================="',
+        f'echo "Target Device: {device} ({codename})"',
+        'echo ""',
+        '$FASTBOOT devices',
+        'echo ""',
+    ]
+
+    if codename:
+        lines.extend([
+            f'PRODUCT=$($FASTBOOT getvar product 2>&1 | grep "product:" | awk \'{{print $2}}\' || true)',
+            f'if [ -n "$PRODUCT" ] && ! echo "$PRODUCT" | grep -qi "{codename}"; then',
+            f'    echo "[Warning] Device mismatch (found: $PRODUCT, expected: {codename})"',
+            '    read -r -p "Do you want to continue anyway? (y/n) " CONT',
+            '    if [ "$CONT" != "y" ] && [ "$CONT" != "Y" ]; then exit 1; fi',
+            "fi",
+            'echo ""',
+        ])
+
+    lines.extend([
+        'read -r -p "Format userdata after flashing? (y/n): " WIPE',
+        'echo ""',
+        'echo "Flashing firmware partitions..."',
+    ])
+
+    ext = ".img.zst" if use_zstd else ".img"
+    for fw in firmware_imgs:
+        lines.append(f'[ -f "{fw}{ext}" ] && $FASTBOOT flash "{fw}" "{fw}{ext}" || true')
+
+    lines.append('echo ""')
+    lines.append('echo "Flashing system partitions..."')
+    for sys_part in system_imgs:
+        lines.append(f'[ -f "{sys_part}{ext}" ] && $FASTBOOT flash "{sys_part}" "{sys_part}{ext}" || true')
+
+    if super_imgs:
+        lines.extend([
+            'echo ""',
+            'echo "Rebooting to fastbootd for dynamic partitions..."',
+            '$FASTBOOT reboot fastboot || true',
+            'sleep 5',
+            'echo "Flashing dynamic partitions in fastbootd..."',
+        ])
+        for sp in super_imgs:
+            lines.append(f'[ -f "{sp}{ext}" ] && $FASTBOOT flash "{sp}" "{sp}{ext}" || true')
+
+    lines.extend([
+        'echo ""',
+        'if [ "$WIPE" = "y" ] || [ "$WIPE" = "Y" ]; then',
+        '    echo "Wiping userdata..."',
+        '    $FASTBOOT -w || true',
+        "fi",
+        'echo ""',
+        'echo "Rebooting to system..."',
+        '$FASTBOOT reboot',
+        'echo "=============================================="',
+        'echo "           Flashing Complete"',
+        'echo "=============================================="',
+    ])
+    return "\n".join(lines)
+
+
+def generate_fastboot_termux(
+    device: str,
+    codename: str,
+    firmware_imgs: List[str],
+    system_imgs: List[str],
+    super_imgs: List[str],
+    use_zstd: bool = False
+) -> str:
+    lines = [
+        "#!/data/data/com.termux/files/usr/bin/bash",
+        "set -e",
+        'SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"',
+        'cd "$SCRIPT_DIR"',
+        "",
+        'if ! command -v fastboot >/dev/null 2>&1; then',
+        '    echo "[*] Installing android-tools in Termux..."',
+        "    pkg update -y && pkg install -y android-tools",
+        "fi",
+        'FASTBOOT="fastboot"',
+        "",
+        'echo "=============================================="',
+        'echo "      SpeedFlasher Termux Fastboot Flasher"',
+        'echo "=============================================="',
+        f'echo "Target Device: {device} ({codename})"',
+        'echo ""',
+        '$FASTBOOT devices',
+        'echo ""',
+        'read -r -p "Format userdata after flashing? (y/n): " WIPE',
+        'echo ""',
+        'echo "Flashing firmware partitions..."',
+    ]
+
+    ext = ".img.zst" if use_zstd else ".img"
+    for fw in firmware_imgs:
+        lines.append(f'[ -f "{fw}{ext}" ] && $FASTBOOT flash "{fw}" "{fw}{ext}" || true')
+
+    lines.append('echo ""')
+    lines.append('echo "Flashing system partitions..."')
+    for sys_part in system_imgs:
+        lines.append(f'[ -f "{sys_part}{ext}" ] && $FASTBOOT flash "{sys_part}" "{sys_part}{ext}" || true')
+
+    if super_imgs:
+        lines.extend([
+            'echo ""',
+            'echo "Rebooting to fastbootd for dynamic partitions..."',
+            '$FASTBOOT reboot fastboot || true',
+            'sleep 5',
+            'echo "Flashing dynamic partitions in fastbootd..."',
+        ])
+        for sp in super_imgs:
+            lines.append(f'[ -f "{sp}{ext}" ] && $FASTBOOT flash "{sp}" "{sp}{ext}" || true')
+
+    lines.extend([
+        'echo ""',
+        'if [ "$WIPE" = "y" ] || [ "$WIPE" = "Y" ]; then',
+        '    echo "Wiping userdata..."',
+        '    $FASTBOOT -w || true',
+        "fi",
+        'echo ""',
+        'echo "Rebooting to system..."',
+        '$FASTBOOT reboot',
+        'echo "=============================================="',
+        'echo "           Flashing Complete"',
+        'echo "=============================================="',
+    ])
+    return "\n".join(lines)

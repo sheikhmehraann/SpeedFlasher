@@ -1,0 +1,1 @@
+"""SpeedFlasher core module."""

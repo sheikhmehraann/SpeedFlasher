@@ -1,0 +1,22 @@
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+
+# Build artifacts and temporary workspaces
+build_workspace/
+zip_workspace/
+temp_staging/
+output/
+extracted/
+
+# Archives and raw image outputs
+*.zip
+*.img
+*.zst
+.DS_Store
+Thumbs.db
