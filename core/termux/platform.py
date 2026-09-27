@@ -51,6 +51,9 @@ class TermuxPlatform:
             print(f"[*] Installing required Termux packages: {', '.join(missing_pkgs)}")
             subprocess.run(["pkg", "install", "-y", *missing_pkgs], check=False)
 
+        if shutil.which("zstd"):
+            return
+
         missing_py = []
         try:
             import zstandard
@@ -58,5 +61,5 @@ class TermuxPlatform:
             missing_py.append("zstandard")
 
         if missing_py:
-            print(f"[*] Installing required Python packages: {', '.join(missing_py)}")
+            print(f"[*] Installing fallback Python package: {', '.join(missing_py)}")
             subprocess.run([sys.executable, "-m", "pip", "install", *missing_py], check=False)

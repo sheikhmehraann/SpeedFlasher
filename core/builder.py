@@ -49,11 +49,11 @@ def compress_single_image_worker(task: Tuple[str, str, str, int, int, int, str])
 
     th_arg = f"-T{threads}"
     if level <= 0:
-        cmd_args = ["--fast=10", th_arg, "-f", "-q", in_file, "-o", out_file]
+        cmd_args = ["--fast=10", th_arg, "--no-check", "-f", "-q", in_file, "-o", out_file]
     elif level >= 20:
-        cmd_args = [f"-{level}", "--ultra", th_arg, "-f", "-q", in_file, "-o", out_file]
+        cmd_args = [f"-{level}", "--ultra", th_arg, "--no-check", "-f", "-q", in_file, "-o", out_file]
     else:
-        cmd_args = [f"-{level}", th_arg, "-f", "-q", in_file, "-o", out_file]
+        cmd_args = [f"-{level}", th_arg, "--no-check", "-f", "-q", in_file, "-o", out_file]
 
     compressed = False
     if z_bin and os.path.isfile(z_bin):
@@ -134,7 +134,10 @@ class FlashableBuilder:
                     st = os.stat(fp)
                     zinfo = zipfile.ZipInfo(filename=rp)
                     zinfo.date_time = time.localtime(st.st_mtime)[:6]
-                    zinfo.compress_type = compression
+                    if f.endswith(".zst") or zip_level == 0:
+                        zinfo.compress_type = zipfile.ZIP_STORED
+                    else:
+                        zinfo.compress_type = compression
                     zinfo.create_system = 3
                     zinfo.file_size = st.st_size
 
@@ -263,7 +266,6 @@ class FlashableBuilder:
                 (t[0], t[1], t[2], t[3], t[4], threads_per_worker, host_zstd) for t in compress_tasks
             ]
             print(f"\n[3/5] Zstandard Compression (Level {zstd_level})")
-            print(f"      Parallel Workers: {workers} (x{threads_per_worker} threads)")
             with ProcessPoolExecutor(max_workers=workers) as executor:
                 futures = [executor.submit(compress_single_image_worker, t) for t in tasks_with_threads]
                 for f in as_completed(futures):
@@ -280,7 +282,6 @@ class FlashableBuilder:
 
         # Stage recovery binaries
         print(f"\n[4/5] Generating Recovery & Fastboot Installers")
-        print(f"      -> Staged recovery binaries (lptools, avbctl, zstd)")
         if use_zstd:
             zstd_rec_path = os.path.join(work_dir, "META-INF", "zstd")
             zstd_src = os.path.join(root_dir, "bin", "device", "zstd-arm64")
@@ -297,7 +298,6 @@ class FlashableBuilder:
                     fast_stage_file(b_src, os.path.join(bin_dir_target, b))
 
         # Write recovery update-binary and updater-script
-        print(f"      -> Generated recovery update-binary (POSIX 0755)")
         update_binary_content = generate_update_binary(
             device, firmware, codename, super_specs, system_imgs, firmware_imgs, tr_specs,
             maintainer=maintainer, vbmeta_option=vbmeta_option, use_zstd=use_zstd
@@ -350,10 +350,6 @@ class FlashableBuilder:
                 os.chmod(os.path.join(work_dir, "flash_termux.sh"), 0o755)
             except OSError:
                 pass
-
-            print(f"      -> Generated Windows Fastboot script (flash_windows.bat)")
-            print(f"      -> Generated Linux Fastboot script (flash_linux.sh)")
-            print(f"      -> Generated Termux Fastboot script (flash_termux.sh)")
 
         # Package ZIP
         print(f"\n[5/5] Packaging ZIP Archive")

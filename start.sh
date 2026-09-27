@@ -11,9 +11,4 @@ fi
 
 chmod +x bin/linux/* bin/device/* 2>/dev/null || true
 
-if ! python3 -c "import zstandard" >/dev/null 2>&1; then
-    echo "[*] Installing Python dependencies..."
-    python3 -m pip install -r requirements.txt || pip3 install -r requirements.txt
-fi
-
 python3 main.py "$@"

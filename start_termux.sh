@@ -9,9 +9,6 @@ if [ ! -d "$HOME/storage" ]; then
 fi
 
 pkg update -y || true
-pkg install -y python zstd p7zip tar clang android-tools || true
-
-pip install --upgrade pip || true
-pip install -r requirements.txt || true
+pkg install -y python zstd android-tools || true
 
 python main.py "$@"

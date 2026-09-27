@@ -127,7 +127,7 @@ class TestSpeedFlasherDeepOS(unittest.TestCase):
         )
         self.assertIn("#!/usr/bin/env bash", sh_zstd)
         self.assertIn("X6871", sh_zstd)
-        self.assertIn("$ZSTD -d -q -f \"lk.img.zst\" -o \"lk.img\"", sh_zstd)
+        self.assertIn("$ZSTD -d -q -f -T0 --no-check \"lk.img.zst\" -o \"lk.img\"", sh_zstd)
         self.assertIn("$FASTBOOT flash \"lk\" \"lk.img\"", sh_zstd)
 
         sh_raw = LinuxInstaller.generate_shell_script(
@@ -153,7 +153,7 @@ class TestSpeedFlasherDeepOS(unittest.TestCase):
         self.assertIn("#!/data/data/com.termux/files/usr/bin/bash", sh_zstd)
         self.assertIn("android-tools", sh_zstd)
         self.assertIn("pkg install -y zstd", sh_zstd)
-        self.assertIn("zstd -d -q -f \"lk.img.zst\" -o \"lk.img\"", sh_zstd)
+        self.assertIn("zstd -d -q -f -T0 --no-check \"lk.img.zst\" -o \"lk.img\"", sh_zstd)
         self.assertIn("$FASTBOOT flash \"lk\" \"lk.img\"", sh_zstd)
 
         sh_raw = TermuxInstaller.generate_shell_script(

@@ -8,7 +8,7 @@ class WindowsInstaller:
             return [
                 f"if exist {part}.img.zst (",
                 f"    echo Flashing {part}...",
-                f"    %zstd% -d -q -f {part}.img.zst -o {part}.img",
+                f"    %zstd% -d -q -f -T0 --no-check {part}.img.zst -o {part}.img",
                 f"    if exist {part}.img (",
                 f"        %fastboot% flash {part} {part}.img",
                 f"        del /f /q {part}.img >nul 2>&1",

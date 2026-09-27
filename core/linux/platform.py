@@ -52,6 +52,9 @@ class LinuxPlatform:
                     except OSError:
                         pass
 
+        if cls.get_zstd_binary():
+            return
+
         missing = []
         try:
             import zstandard
@@ -59,5 +62,5 @@ class LinuxPlatform:
             missing.append("zstandard")
 
         if missing:
-            print(f"[*] Installing missing Python packages: {', '.join(missing)}")
+            print(f"[*] Installing fallback Python package: {', '.join(missing)}")
             subprocess.run([sys.executable, "-m", "pip", "install", *missing], check=False)

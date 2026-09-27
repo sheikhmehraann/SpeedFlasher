@@ -8,7 +8,7 @@ class LinuxInstaller:
             return [
                 f'if [ -f "{part}.img.zst" ]; then',
                 f'    echo "Flashing {part}..."',
-                f'    $ZSTD -d -q -f "{part}.img.zst" -o "{part}.img"',
+                f'    $ZSTD -d -q -f -T0 --no-check "{part}.img.zst" -o "{part}.img"',
                 f'    if [ -f "{part}.img" ]; then',
                 f'        $FASTBOOT flash "{part}" "{part}.img"',
                 f'        rm -f "{part}.img"',

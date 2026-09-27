@@ -85,20 +85,20 @@ SpeedFlasher/
 
 #### Requirements
 - Ubuntu, Debian, Fedora, Arch Linux, or any standard Linux distribution (x86_64)
-- Python 3.8+ with pip
+- Python 3.8+ (no extra pip packages required; bundled tools run out-of-the-box)
 
 #### Installation
-Install Python and pip using your distribution package manager:
+Install Python using your distribution package manager:
 
 ```bash
 # Ubuntu / Debian
-sudo apt update && sudo apt install -y python3 python3-pip
+sudo apt update && sudo apt install -y python3
 
 # Fedora
-sudo dnf install -y python3 python3-pip
+sudo dnf install -y python3
 
 # Arch Linux
-sudo pacman -S --needed python python-pip
+sudo pacman -S --needed python
 ```
 
 #### Building a Flashable Package
@@ -155,8 +155,7 @@ chmod +x start_termux.sh
 Or install dependencies manually:
 ```bash
 pkg update -y
-pkg install -y python zstd clang android-tools
-pip install -r requirements.txt
+pkg install -y python zstd android-tools
 termux-setup-storage
 ```
 

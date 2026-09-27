@@ -1,6 +1,4 @@
-requests>=2.28.0
-urllib3>=1.26.0
-httpx>=0.25.0
+# SpeedFlasher has zero required external dependencies.
+# The tool runs out-of-the-box using bundled native binaries and Python standard library.
+# Optional fallback if native zstd binary is absent:
 zstandard>=0.20.0
-rich>=13.0.0
-tqdm>=4.64.0

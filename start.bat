@@ -11,12 +11,6 @@ if %errorlevel% neq 0 (
     exit /b 1
 )
 
-python -c "import zstandard" >nul 2>nul
-if %errorlevel% neq 0 (
-    echo [*] Installing required Python dependencies...
-    python -m pip install -r requirements.txt
-)
-
 python main.py %*
 
 if "%~1"=="" (
