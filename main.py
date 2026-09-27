@@ -56,12 +56,6 @@ def print_summary(res):
         print(f"  - Firmware/Boot  : {len(fw_pts)} ({', '.join(fw_pts)})")
 
     print("-" * 72)
-    print("Installers Generated:")
-    print("  - Recovery ZIP    : META-INF/com/google/android/update-binary")
-    print("  - Windows Fastboot: flash_windows.bat (with bundled tools)")
-    print("  - Linux Fastboot  : flash_linux.sh")
-    print("  - Termux Fastboot : flash_termux.sh")
-    print("-" * 72)
     print(f"Output File        : {res.output_zip}")
     print(f"Package Size       : {res.size_mb:.2f} MB")
     print("Status             : SUCCESS")
