@@ -361,6 +361,48 @@ class TestSpeedFlasherDeepOS(unittest.TestCase):
                 self.assertIn("X6871", out)
                 self.assertIn("15.1", out)
 
+    def test_interactive_prompts_have_no_bracket_defaults(self):
+        from main import interactive_flow
+
+        prompts_received = []
+        user_inputs = [
+            self.test_dir,
+            "Infinix GT 20 Pro",
+            "X6871",
+            "15.0",
+            "disable",
+            "Mehraan",
+            "1",
+            "1",
+            "y",
+            ""
+        ]
+
+        def mock_input(prompt=""):
+            prompts_received.append(prompt)
+            return user_inputs.pop(0)
+
+        with patch("builtins.input", side_effect=mock_input):
+            with patch("core.builder.get_current_platform") as mock_plat:
+                mock_plat.return_value.ensure_dependencies.return_value = None
+                with patch("sys.stdout", new_callable=io.StringIO):
+                    interactive_flow()
+
+        self.assertEqual(prompts_received[0], "Enter IMGS Path : ")
+        self.assertEqual(prompts_received[1], "Devicename : ")
+        self.assertEqual(prompts_received[2], "Codename : ")
+        self.assertEqual(prompts_received[3], "Version : ")
+        self.assertEqual(prompts_received[4], "AVB 2.0 (vbmeta) : ")
+        self.assertEqual(prompts_received[5], "Maintainer : ")
+        self.assertEqual(prompts_received[6], "Ztsd Compression (0-22) : ")
+        self.assertEqual(prompts_received[7], "Zip Compression (0-9) : ")
+        for p in prompts_received[:8]:
+            self.assertNotIn("[Android Device]", p)
+            self.assertNotIn("[skip]", p)
+            self.assertNotIn("[1.0]", p)
+            self.assertNotIn("[1]", p)
+            self.assertNotIn("[Mehraan]", p)
+
 
 if __name__ == "__main__":
     unittest.main()

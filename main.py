@@ -94,7 +94,7 @@ def interactive_flow():
 
         while True:
             if step == 1:
-                prompt = f"Enter IMGS Path [{cfg['imgs_path']}] : " if cfg['imgs_path'] else "Enter IMGS Path : "
+                prompt = "Enter IMGS Path : "
                 raw = input(prompt).strip()
                 if raw.lower() in ("b", "back"):
                     continue
@@ -150,7 +150,7 @@ def interactive_flow():
                     step = 2
 
             elif step == 2:
-                prompt = f"Devicename [{cfg['device']}] : " if cfg['device'] else "Devicename : "
+                prompt = "Devicename : "
                 val = input(prompt).strip()
                 if val.lower() in ("b", "back"):
                     step = 9 if return_to_review else 1
@@ -159,7 +159,7 @@ def interactive_flow():
                 if val:
                     cfg["device"] = val
                 elif not cfg["device"]:
-                    cfg["device"] = "Android Device"
+                    cfg["device"] = def_device or "Android Device"
 
                 if return_to_review:
                     step = 9
@@ -168,7 +168,7 @@ def interactive_flow():
                     step = 3
 
             elif step == 3:
-                prompt = f"Codename [{cfg['codename']}] : " if cfg['codename'] else "Codename : "
+                prompt = "Codename : "
                 val = input(prompt).strip()
                 if val.lower() in ("b", "back"):
                     step = 9 if return_to_review else 2
@@ -176,6 +176,8 @@ def interactive_flow():
                     continue
                 if val:
                     cfg["codename"] = val
+                elif not cfg["codename"] and def_codename:
+                    cfg["codename"] = def_codename
 
                 if return_to_review:
                     step = 9
@@ -184,7 +186,7 @@ def interactive_flow():
                     step = 4
 
             elif step == 4:
-                prompt = f"Version [{cfg['version']}] : " if cfg['version'] else "Version : "
+                prompt = "Version : "
                 val = input(prompt).strip()
                 if val.lower() in ("b", "back"):
                     step = 9 if return_to_review else 3
@@ -192,6 +194,8 @@ def interactive_flow():
                     continue
                 if val:
                     cfg["version"] = val
+                elif not cfg["version"]:
+                    cfg["version"] = def_version or "1.0"
 
                 if return_to_review:
                     step = 9
@@ -200,7 +204,7 @@ def interactive_flow():
                     step = 5
 
             elif step == 5:
-                prompt = f"AVB 2.0 (vbmeta) [{cfg['vbmeta']}] : "
+                prompt = "AVB 2.0 (vbmeta) : "
                 val = input(prompt).strip().lower()
                 if val in ("b", "back"):
                     step = 9 if return_to_review else 4
@@ -223,7 +227,7 @@ def interactive_flow():
                     step = 6
 
             elif step == 6:
-                prompt = f"Maintainer [{cfg['maintainer']}] : " if cfg['maintainer'] else "Maintainer : "
+                prompt = "Maintainer : "
                 val = input(prompt).strip()
                 if val.lower() in ("b", "back"):
                     step = 9 if return_to_review else 5
@@ -231,6 +235,8 @@ def interactive_flow():
                     continue
                 if val:
                     cfg["maintainer"] = val
+                elif not cfg["maintainer"]:
+                    cfg["maintainer"] = "Mehraan"
 
                 if return_to_review:
                     step = 9
@@ -239,7 +245,7 @@ def interactive_flow():
                     step = 7
 
             elif step == 7:
-                prompt = f"Ztsd Compression (0-22) [{cfg['zstd_level']}] : "
+                prompt = "Ztsd Compression (0-22) : "
                 val = input(prompt).strip()
                 if val.lower() in ("b", "back"):
                     step = 9 if return_to_review else 6
@@ -262,7 +268,7 @@ def interactive_flow():
                     step = 8
 
             elif step == 8:
-                prompt = f"Zip Compression (0-9) [{cfg['zip_level']}] : "
+                prompt = "Zip Compression (0-9) : "
                 val = input(prompt).strip()
                 if val.lower() in ("b", "back"):
                     step = 9 if return_to_review else 7
@@ -292,7 +298,7 @@ def interactive_flow():
                 print(f"  7. ZSTD Level      : {cfg['zstd_level']}")
                 print(f"  8. ZIP Level       : {cfg['zip_level']}")
                 print("------------------------------------------------------------------------")
-                ans = input("Proceed with build? (Y/n, 1-8 to edit, 'b' to go back) [Y] : ").strip().lower()
+                ans = input("Proceed with build? (y/n, 1-8 to edit, 'b' to go back) : ").strip().lower()
                 if ans in ("", "y", "yes"):
                     break
                 elif ans in ("b", "back"):
