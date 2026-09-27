@@ -100,8 +100,6 @@ class FlashableBuilder:
             except OSError:
                 pass
 
-        print(f"[*] Packaging ZIP (Level {zip_level}): {os.path.basename(output_zip)}")
-
         executable_names = {
             "update-binary", "zstd", "lptools", "avbctl",
             "rapidflasher-arm64", "lpdump", "lpmake", "fastboot",
@@ -180,7 +178,10 @@ class FlashableBuilder:
         if not partitions:
             raise ValueError(f"No valid partition images (.img or .img.zst) found.")
 
-        print(f"[+] Discovered {len(partitions)} partition(s): {', '.join(sorted(partitions.keys()))}")
+        total_parts = len(partitions)
+        print(f"\n[1/5] Partition Discovery")
+        print(f"      Scanned: {total_parts} partition image(s)")
+        print(f"      Target : {device} ({codename or 'universal'}) | Version: {firmware}")
 
         work_dir = os.path.abspath("zip_workspace")
         staging_dir = os.path.abspath("temp_staging")
@@ -193,6 +194,7 @@ class FlashableBuilder:
         os.makedirs(meta_dir, exist_ok=True)
 
         if vbmeta_option in ("disable", "enable"):
+            print(f"\n[2/5] AVB 2.0 Configuration ({vbmeta_option.upper()})")
             avb_mgr = AvbManager(vbmeta_option)
             for p_name, p_info in partitions.items():
                 if p_name.startswith("vbmeta") and not p_info["is_zstd"] and os.path.isfile(p_info["path"]):
@@ -200,10 +202,13 @@ class FlashableBuilder:
                         staged_vb = os.path.join(staging_dir, f"{p_name}_staged.img")
                         shutil.copy2(p_info["path"], staged_vb)
                         if avb_mgr.patch_vbmeta_image(Path(staged_vb)):
-                            print(f"[*] Pre-patched {p_name} header flags -> {vbmeta_option.upper()}")
+                            print(f"      -> Patched {p_name} header flags ({vbmeta_option.upper()})")
                             partitions[p_name]["path"] = staged_vb
                     except Exception as e:
-                        print(f"[!] Notice: {p_name} header patch skipped: {e}")
+                        print(f"      Notice: {p_name} header patch skipped: {e}")
+        else:
+            print(f"\n[2/5] AVB 2.0 Configuration (SKIP)")
+            print("      -> Keeping stock vbmeta flags intact")
 
         compress_tasks = []
         super_specs = []
@@ -257,19 +262,25 @@ class FlashableBuilder:
             tasks_with_threads = [
                 (t[0], t[1], t[2], t[3], t[4], threads_per_worker, host_zstd) for t in compress_tasks
             ]
-            print(f"[*] Compressing {len(tasks_with_threads)} partition(s) with Zstandard (level {zstd_level}, {workers} workers x {threads_per_worker}T)...")
+            print(f"\n[3/5] Zstandard Compression (Level {zstd_level})")
+            print(f"      Parallel Workers: {workers} (x{threads_per_worker} threads)")
             with ProcessPoolExecutor(max_workers=workers) as executor:
                 futures = [executor.submit(compress_single_image_worker, t) for t in tasks_with_threads]
                 for f in as_completed(futures):
                     name, raw_size = f.result()
-                    print(f"    [+] Compressed {name}.img -> {name}.img.zst")
+                    sz_str = f"{raw_size / (1024*1024):.1f} MB" if raw_size < 1024*1024*1024 else f"{raw_size / (1024*1024*1024):.2f} GB"
+                    print(f"      -> Compressed {name}.img -> {name}.img.zst ({sz_str})")
                     if any(n == name for n, _ in tr_specs):
                         tr_specs = [(n, raw_size if n == name else s) for n, s in tr_specs]
                     elif any(n == name for n, _ in super_specs):
                         super_specs = [(n, raw_size if n == name else s) for n, s in super_specs]
+        else:
+            print(f"\n[3/5] Partition Staging")
+            print(f"      Staged: {total_parts} image(s)")
 
         # Stage recovery binaries
-        print("[*] Staging recovery binaries...")
+        print(f"\n[4/5] Generating Recovery & Fastboot Installers")
+        print(f"      -> Staged recovery binaries (lptools, avbctl, zstd)")
         if use_zstd:
             zstd_rec_path = os.path.join(work_dir, "META-INF", "zstd")
             zstd_src = os.path.join(root_dir, "bin", "device", "zstd-arm64")
@@ -286,7 +297,7 @@ class FlashableBuilder:
                     fast_stage_file(b_src, os.path.join(bin_dir_target, b))
 
         # Write recovery update-binary and updater-script
-        print("[*] Generating recovery update-binary...")
+        print(f"      -> Generated recovery update-binary (POSIX 0755)")
         update_binary_content = generate_update_binary(
             device, firmware, codename, super_specs, system_imgs, firmware_imgs, tr_specs,
             maintainer=maintainer, vbmeta_option=vbmeta_option, use_zstd=use_zstd
@@ -304,8 +315,6 @@ class FlashableBuilder:
 
         # Stage Fastboot installer scripts and binaries for all OS targets
         if include_fastboot:
-            print("[*] Staging fastboot installer scripts and binaries...")
-            
             # Windows fastboot assets
             win_assets = WindowsPlatform.get_fastboot_assets()
             if win_assets:
@@ -342,13 +351,19 @@ class FlashableBuilder:
             except OSError:
                 pass
 
+            print(f"      -> Generated Windows Fastboot script (flash_windows.bat)")
+            print(f"      -> Generated Linux Fastboot script (flash_linux.sh)")
+            print(f"      -> Generated Termux Fastboot script (flash_termux.sh)")
+
         # Package ZIP
+        print(f"\n[5/5] Packaging ZIP Archive")
+        print(f"      Writing: {os.path.basename(output_zip)} (Level {zip_level})")
         cls.package_zip(work_dir, output_zip, zip_level=zip_level)
         shutil.rmtree(work_dir, ignore_errors=True)
         shutil.rmtree(staging_dir, ignore_errors=True)
 
         size_mb = os.path.getsize(output_zip) / (1024 * 1024)
-        print(f"[+] Package ready: {output_zip} ({size_mb:.2f} MB)")
+        print(f"      Package ready: {output_zip} ({size_mb:.2f} MB)")
         return BuildResult(
             output_zip,
             output_zip=output_zip,

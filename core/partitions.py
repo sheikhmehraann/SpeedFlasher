@@ -2,6 +2,7 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 from typing import Any, Dict, Tuple
 
 ZSTD_FRAME_MAGIC = b"\x28\xb5\x2f\xfd"
@@ -76,6 +77,11 @@ def is_filesystem_image(file_path: str) -> bool:
 
 def get_zstd_uncompressed_size(file_path: str, zstd_bin: str = None) -> int:
     z_bin = zstd_bin or shutil.which("zstd") or shutil.which("zstd.exe")
+    if not z_bin:
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        cand = os.path.join(root, "bin", "windows" if sys.platform.startswith("win") else "linux", "zstd.exe" if sys.platform.startswith("win") else "zstd")
+        if os.path.isfile(cand):
+            z_bin = cand
     if z_bin:
         try:
             res = subprocess.run([z_bin, "-l", "--format=json", file_path], capture_output=True, text=True, check=True)

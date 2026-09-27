@@ -79,7 +79,7 @@ def generate_update_binary(
         "flash_partition_zstd() {",
         '    src="$1"; dest="$2"',
         '    partition_name=$(basename "$dest")',
-        '    ui_print "- Flashing partition $partition_name"',
+        '    ui_print "  -> Flashing partition $partition_name"',
         '    unzip -p "$ZIPFILE" "$src" | $ZSTD_BIN -c -d -T0 --no-check >"$dest" || {',
         '        ui_print "Error: Failed to flash compressed $src to $dest"',
         '        exit 1',
@@ -91,16 +91,16 @@ def generate_update_binary(
         '    dev_a=$(find_block_device "${base_name}_a")',
         '    dev_b=$(find_block_device "${base_name}_b")',
         '    if [ -e "$dev_a" ] || [ -e "$dev_b" ]; then',
-        '        ui_print "- Flashing partition ${base_name} to both slots"',
+        '        ui_print "  -> Flashing partition ${base_name} (both slots)"',
         '        [ -e "$dev_a" ] && { unzip -p "$ZIPFILE" "$img_file" >"$dev_a" || { ui_print "Error: Failed flashing $img_file to $dev_a"; exit 1; }; }',
         '        [ -e "$dev_b" ] && { unzip -p "$ZIPFILE" "$img_file" >"$dev_b" || { ui_print "Error: Failed flashing $img_file to $dev_b"; exit 1; }; }',
         '    else',
         '        dev_single=$(find_block_device "${base_name}")',
         '        if [ -e "$dev_single" ]; then',
-        '            ui_print "- Flashing partition ${base_name}"',
+        '            ui_print "  -> Flashing partition ${base_name}"',
         '            unzip -p "$ZIPFILE" "$img_file" >"$dev_single" || { ui_print "Error: Failed flashing $img_file to $dev_single"; exit 1; }',
         '        else',
-        '            ui_print "- Flashing partition ${base_name}"',
+        '            ui_print "  -> Flashing partition ${base_name}"',
         '            unzip -p "$ZIPFILE" "$img_file" >"/dev/block/by-name/${base_name}" 2>/dev/null || true',
         '        fi',
         '    fi',
@@ -111,16 +111,16 @@ def generate_update_binary(
         '    dev_a=$(find_block_device "${base_name}_a")',
         '    dev_b=$(find_block_device "${base_name}_b")',
         '    if [ -e "$dev_a" ] || [ -e "$dev_b" ]; then',
-        '        ui_print "- Flashing partition ${base_name} to both slots"',
+        '        ui_print "  -> Flashing partition ${base_name} (both slots)"',
         '        [ -e "$dev_a" ] && { unzip -p "$ZIPFILE" "$img_file" | $ZSTD_BIN -c -d -T0 --no-check >"$dev_a" || { ui_print "Error: Failed flashing $img_file to $dev_a"; exit 1; }; }',
         '        [ -e "$dev_b" ] && { unzip -p "$ZIPFILE" "$img_file" | $ZSTD_BIN -c -d -T0 --no-check >"$dev_b" || { ui_print "Error: Failed flashing $img_file to $dev_b"; exit 1; }; }',
         '    else',
         '        dev_single=$(find_block_device "${base_name}")',
         '        if [ -e "$dev_single" ]; then',
-        '            ui_print "- Flashing partition ${base_name}"',
+        '            ui_print "  -> Flashing partition ${base_name}"',
         '            unzip -p "$ZIPFILE" "$img_file" | $ZSTD_BIN -c -d -T0 --no-check >"$dev_single" || { ui_print "Error: Failed flashing $img_file to $dev_single"; exit 1; }',
         '        else',
-        '            ui_print "- Flashing partition ${base_name}"',
+        '            ui_print "  -> Flashing partition ${base_name}"',
         '            unzip -p "$ZIPFILE" "$img_file" | $ZSTD_BIN -c -d -T0 --no-check >"/dev/block/by-name/${base_name}" 2>/dev/null || true',
         '        fi',
         '    fi',
@@ -242,10 +242,10 @@ def generate_update_binary(
         'ui_print "              SpeedFlasher"',
         'ui_print "============================================"',
         'ui_print " "',
-        f'ui_print "Device: {device}"',
-        f'ui_print "Codename: {codename}"',
-        f'ui_print "Version: {firmware}"',
-        f'ui_print "Maintainer: {maintainer}"',
+        f'ui_print "Device     : {device}"',
+        f'ui_print "Codename   : {codename}"',
+        f'ui_print "Version    : {firmware}"',
+        f'ui_print "Maintainer : {maintainer}"',
         'ui_print "============================================"',
         'ui_print " "',
         "checkDevice",
@@ -270,7 +270,7 @@ def generate_update_binary(
 
     if firmware_imgs:
         lines.append('ui_print " "')
-        lines.append('ui_print "Patching firmware to both slots"')
+        lines.append('ui_print "- Flashing Firmware Partitions:"')
         for fw in firmware_imgs:
             if use_zstd:
                 lines.append(f'flash_partition_zstd_both_slots "{fw}.img.zst" "{fw}"')
@@ -280,7 +280,7 @@ def generate_update_binary(
 
     if system_imgs:
         lines.append('ui_print " "')
-        lines.append('ui_print "Patching system partitions"')
+        lines.append('ui_print "- Flashing System Bootchain:"')
         for sys_part in system_imgs:
             if use_zstd:
                 lines.append(f'flash_partition_zstd_both_slots "{sys_part}.img.zst" "{sys_part}"')
@@ -291,15 +291,15 @@ def generate_update_binary(
     if vbmeta_option == "disable":
         lines.extend([
             'ui_print " "',
-            'ui_print "- Configuring AVB 2.0 (Vbmeta)"',
+            'ui_print "- Configuring AVB 2.0 (Vbmeta):"',
             'if [ -f "$AVB_BIN" ] || which avbctl >/dev/null 2>&1; then',
             '    VERITY=$($AVB_BIN get-verity 2>/dev/null)',
             '    if echo "$VERITY" | grep -qi "disabled"; then',
-            '        ui_print "  - AVB Status: Already Disabled"',
+            '        ui_print "  -> AVB Status: Already Disabled"',
             '    else',
             '        $AVB_BIN --force disable-verity >/dev/null 2>&1 || true',
             '        $AVB_BIN --force disable-verification >/dev/null 2>&1 || true',
-            '        ui_print "  - AVB Status: Disabled"',
+            '        ui_print "  -> AVB Status: Disabled"',
             '    fi',
             'fi',
             ""
@@ -307,15 +307,15 @@ def generate_update_binary(
     elif vbmeta_option == "enable":
         lines.extend([
             'ui_print " "',
-            'ui_print "- Configuring AVB 2.0 (Vbmeta)"',
+            'ui_print "- Configuring AVB 2.0 (Vbmeta):"',
             'if [ -f "$AVB_BIN" ] || which avbctl >/dev/null 2>&1; then',
             '    VERITY=$($AVB_BIN get-verity 2>/dev/null)',
             '    if echo "$VERITY" | grep -qi "enabled"; then',
-            '        ui_print "  - AVB Status: Already Enabled"',
+            '        ui_print "  -> AVB Status: Already Enabled"',
             '    else',
             '        $AVB_BIN --force enable-verity >/dev/null 2>&1 || true',
             '        $AVB_BIN --force enable-verification >/dev/null 2>&1 || true',
-            '        ui_print "  - AVB Status: Enabled"',
+            '        ui_print "  -> AVB Status: Enabled"',
             '    fi',
             'fi',
             ""
@@ -324,7 +324,7 @@ def generate_update_binary(
     all_dyn_specs = super_specs + tr_specs
     if all_dyn_specs:
         lines.append('ui_print " "')
-        lines.append('ui_print "Patching dynamic super partitions"')
+        lines.append('ui_print "- Flashing Dynamic Super Partitions:"')
         clear_parts = " ".join(f'"{p[0]}"' for p in all_dyn_specs)
         lines.append(f'process_partitions_for_slots "clear" {clear_parts}')
         lines.append("")
