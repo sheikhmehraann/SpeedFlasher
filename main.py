@@ -2,166 +2,180 @@
 import argparse
 import os
 import sys
-from pathlib import Path
 
-# Add bin/host to PATH
+# Add bin subdirectories to PATH based on platform
 _ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
-_HOST_BIN = os.path.join(_ROOT_DIR, "bin", "host")
-if os.path.isdir(_HOST_BIN) and _HOST_BIN not in os.environ.get("PATH", ""):
-    os.environ["PATH"] = f"{_HOST_BIN}{os.pathsep}{os.environ.get('PATH', '')}"
+if sys.platform.startswith("win"):
+    _OS_BIN = os.path.join(_ROOT_DIR, "bin", "windows")
+else:
+    _OS_BIN = os.path.join(_ROOT_DIR, "bin", "linux")
 
-from core.builder import FlashableBuilder
-from core.downloader import FastDownloader
-from core.extractor import PartitionExtractor
+if os.path.isdir(_OS_BIN) and _OS_BIN not in os.environ.get("PATH", ""):
+    os.environ["PATH"] = f"{_OS_BIN}{os.pathsep}{os.environ.get('PATH', '')}"
+
+from core.builder import FlashableBuilder, get_current_platform
 from core.partitions import scan_partitions
 
 
-def clean_input_path(raw: str) -> str:
+def clean_path(raw: str) -> str:
     cleaned = raw.strip()
     if (cleaned.startswith('"') and cleaned.endswith('"')) or (cleaned.startswith("'") and cleaned.endswith("'")):
         cleaned = cleaned[1:-1].strip()
     return cleaned
 
 
-def resolve_source(source: str, workspace_dir: str) -> str:
-    source = clean_input_path(source)
-    if not source:
-        raise ValueError("Source path or URL cannot be empty.")
+def interactive_flow():
+    # 1. Ensure all platform requirements are present
+    plat = get_current_platform()
+    plat.ensure_dependencies()
 
-    if source.startswith(("http://", "https://")):
-        archive_path = os.path.join(workspace_dir, "downloaded_rom")
-        downloaded = FastDownloader.download(source, archive_path)
-        extracted_dir = os.path.join(workspace_dir, "extracted")
-        PartitionExtractor.extract_recursive(downloaded, extracted_dir)
-        if os.path.exists(downloaded):
-            try:
-                os.remove(downloaded)
-            except OSError:
-                pass
-        return extracted_dir
-
-    if os.path.isfile(source):
-        extracted_dir = os.path.join(workspace_dir, "extracted")
-        PartitionExtractor.extract_recursive(source, extracted_dir)
-        return extracted_dir
-
-    if os.path.isdir(source):
-        return source
-
-    raise FileNotFoundError(f"Source not found: {source}")
-
-
-def interactive_mode():
     print("========================================================================")
     print("                              SpeedFlasher")
     print("========================================================================\n")
 
-    raw_src = input("ROM Images Directory, Archive, or URL: ").strip()
-    workspace_dir = os.path.abspath("build_workspace")
-    os.makedirs(workspace_dir, exist_ok=True)
-
-    imgs_dir = resolve_source(raw_src, workspace_dir)
-    partitions = scan_partitions(imgs_dir)
-    if not partitions:
-        print(f"Error: No partition images found in '{imgs_dir}'")
+    raw_path = input("Enter IMGS Path : ").strip()
+    imgs_path = clean_path(raw_path)
+    if not imgs_path or not os.path.isdir(imgs_path):
+        print(f"\nError: Directory does not exist: {imgs_path}")
         sys.exit(1)
 
-    # Auto-detect device metadata from extracted files
-    meta = PartitionExtractor.detect_metadata(imgs_dir)
-    def_device = meta.get("device") or "Android Device"
-    def_codename = meta.get("codename") or ""
-    def_version = meta.get("version") or "1.0"
+    partitions = scan_partitions(imgs_path)
+    if not partitions:
+        print(f"\nError: No partition images (.img or .img.zst) found in: {imgs_path}")
+        sys.exit(1)
 
-    print(f"\n[+] Found {len(partitions)} partition(s)")
-    if def_codename:
-        print(f"[+] Detected Device: {def_device} ({def_codename}), Version: {def_version}")
+    # Inspect build.prop for defaults if present
+    def_device = ""
+    def_codename = ""
+    def_version = "1.0"
+    for root, _, files in os.walk(imgs_path):
+        for f in files:
+            if f.endswith(".prop") or f == "build.prop":
+                try:
+                    with open(os.path.join(root, f), "r", encoding="utf-8", errors="ignore") as pf:
+                        for line in pf:
+                            line = line.strip()
+                            if "=" not in line or line.startswith("#"):
+                                continue
+                            k, v = line.split("=", 1)
+                            k, v = k.strip(), v.strip()
+                            if k in ("ro.product.device", "ro.build.product", "ro.product.board") and not def_codename:
+                                def_codename = v
+                            elif k in ("ro.product.model", "ro.product.marketname") and not def_device:
+                                def_device = v
+                            elif k in ("ro.build.display.id", "ro.build.version.incremental") and def_version == "1.0":
+                                def_version = v
+                except OSError:
+                    pass
 
-    device = input(f"Device Name [{def_device}]: ").strip() or def_device
-    codename = input(f"Device Codename [{def_codename}]: ").strip() or def_codename
-    version = input(f"ROM Version [{def_version}]: ").strip() or def_version
-    maintainer = input("Maintainer [Mehraan]: ").strip() or "Mehraan"
-    vbmeta = input("AVB 2.0 Vbmeta (disable/enable/skip) [skip]: ").strip().lower() or "skip"
+    devicename_prompt = f"Devicename [{def_device}] : " if def_device else "Devicename : "
+    codename_prompt = f"Codename [{def_codename}] : " if def_codename else "Codename : "
+    version_prompt = f"Version [{def_version}] : " if def_version != "1.0" else "Version : "
 
-    zstd_raw = input("ZSTD Compression Level (0-22) [1]: ").strip()
-    zstd_level = int(zstd_raw) if zstd_raw.isdigit() else 1
+    devicename_input = input(devicename_prompt).strip()
+    devicename = devicename_input or def_device or "Android Device"
 
-    zip_raw = input("ZIP Level (0=Store, 1-9=Deflate) [1]: ").strip()
-    zip_level = int(zip_raw) if zip_raw.isdigit() else 1
+    codename_input = input(codename_prompt).strip()
+    codename = codename_input or def_codename or ""
 
+    version_input = input(version_prompt).strip()
+    version = version_input or def_version
+
+    avb_raw = input("AVB 2.0 (vbmeta) [skip/disable/enable] : ").strip().lower()
+    avb_mode = avb_raw if avb_raw in ("disable", "enable") else "skip"
+
+    maintainer_input = input("Maintainer [Mehraan] : ").strip()
+    maintainer = maintainer_input or "Mehraan"
+
+    zstd_raw = input("Ztsd Compression (0-22) [1] : ").strip()
+    try:
+        zstd_level = int(zstd_raw) if zstd_raw else 1
+    except ValueError:
+        zstd_level = 1
+
+    zip_raw = input("Zip Compression (0-9) [1] : ").strip()
+    try:
+        zip_level = int(zip_raw) if zip_raw else 1
+    except ValueError:
+        zip_level = 1
+
+    # Automatically generate output destination into output folder
+    out_dir = os.path.join(_ROOT_DIR, "output")
+    os.makedirs(out_dir, exist_ok=True)
     out_name = f"{version}-{codename}-Flashable.zip" if codename else f"{version}-Flashable.zip"
-    default_out = os.path.join(_ROOT_DIR, "output", out_name)
-    raw_out = input(f"Output ZIP [{default_out}]: ").strip()
-    output_zip = clean_input_path(raw_out) if raw_out else default_out
+    output_zip = os.path.join(out_dir, out_name)
 
-    print("\n[*] Starting build process...")
+    print(f"\n[*] Output target: {output_zip}")
+    print("[*] Starting package build...")
+
     FlashableBuilder.build(
-        imgs_dir=imgs_dir,
+        imgs_dir=imgs_path,
         partitions=partitions,
         output_zip=output_zip,
-        device=device,
+        device=devicename,
         firmware=version,
         codename=codename,
         maintainer=maintainer,
-        vbmeta_option=vbmeta,
+        vbmeta_option=avb_mode,
         zstd_level=zstd_level,
         zip_level=zip_level,
         include_fastboot=True
     )
 
 
-def main():
+def cli_flow():
+    plat = get_current_platform()
+    plat.ensure_dependencies()
+
     parser = argparse.ArgumentParser(description="SpeedFlasher - Universal Flashable Package Maker")
-    parser.add_argument("-i", "--rom-dir", "--imgs-dir", dest="rom_dir", help="Directory containing partition images")
-    parser.add_argument("-f", "--file", help="Path to local archive (.zip, .tar.zst, payload.bin, super.img)")
-    parser.add_argument("-u", "--url", help="Direct URL to ROM archive")
-    parser.add_argument("-o", "--output", help="Output .zip package path")
-    parser.add_argument("-d", "--device", default="", help="Device marketing name")
+    parser.add_argument("-i", "--imgs-path", "--rom-dir", dest="imgs_path", help="Directory containing partition images")
+    parser.add_argument("-d", "--device", default="Android Device", help="Device marketing name")
     parser.add_argument("-c", "--codename", default="", help="Device board codename")
-    parser.add_argument("-v", "--version", default="", help="Firmware / ROM version")
+    parser.add_argument("-v", "--version", default="1.0", help="Firmware / ROM version")
     parser.add_argument("-m", "--maintainer", default="Mehraan", help="Maintainer name")
-    parser.add_argument("--vbmeta", choices=["disable", "enable", "skip"], default="skip", help="AVB 2.0 action")
+    parser.add_argument("--vbmeta", choices=["skip", "disable", "enable"], default="skip", help="AVB 2.0 vbmeta mode")
     parser.add_argument("--zstd-level", type=int, default=1, help="ZSTD compression level (0-22)")
     parser.add_argument("--zip-level", type=int, default=1, help="ZIP compression level (0-9)")
+    parser.add_argument("-o", "--output", help="Optional custom output ZIP path")
     parser.add_argument("--no-fastboot", action="store_true", help="Exclude Fastboot installer scripts and binaries")
 
     args = parser.parse_args()
 
-    if not args.rom_dir and not args.file and not args.url:
-        interactive_mode()
-        return
-
-    workspace_dir = os.path.abspath("build_workspace")
-    os.makedirs(workspace_dir, exist_ok=True)
-
-    src = args.url or args.file or args.rom_dir
-    imgs_dir = resolve_source(src, workspace_dir)
-    partitions = scan_partitions(imgs_dir)
-    if not partitions:
-        print(f"Error: No partition images found in '{imgs_dir}'")
+    imgs_path = clean_path(args.imgs_path)
+    if not os.path.isdir(imgs_path):
+        print(f"Error: Directory does not exist: {imgs_path}")
         sys.exit(1)
 
-    meta = PartitionExtractor.detect_metadata(imgs_dir)
-    device = args.device or meta.get("device") or "Android Device"
-    codename = args.codename or meta.get("codename") or ""
-    version = args.version or meta.get("version") or "1.0"
+    partitions = scan_partitions(imgs_path)
+    if not partitions:
+        print(f"Error: No partition images found in: {imgs_path}")
+        sys.exit(1)
 
-    out_name = f"{version}-{codename}-Flashable.zip" if codename else f"{version}-Flashable.zip"
-    default_out = os.path.join(_ROOT_DIR, "output", out_name)
-    output_zip = clean_input_path(args.output) if args.output else default_out
+    out_dir = os.path.join(_ROOT_DIR, "output")
+    os.makedirs(out_dir, exist_ok=True)
+    out_name = f"{args.version}-{args.codename}-Flashable.zip" if args.codename else f"{args.version}-Flashable.zip"
+    output_zip = clean_path(args.output) if args.output else os.path.join(out_dir, out_name)
 
     FlashableBuilder.build(
-        imgs_dir=imgs_dir,
+        imgs_dir=imgs_path,
         partitions=partitions,
         output_zip=output_zip,
-        device=device,
-        firmware=version,
-        codename=codename,
+        device=args.device,
+        firmware=args.version,
+        codename=args.codename,
         maintainer=args.maintainer,
         vbmeta_option=args.vbmeta,
         zstd_level=args.zstd_level,
         zip_level=args.zip_level,
         include_fastboot=not args.no_fastboot
     )
+
+
+def main():
+    if len(sys.argv) == 1:
+        interactive_flow()
+    else:
+        cli_flow()
 
 
 if __name__ == "__main__":

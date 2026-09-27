@@ -1,60 +1,68 @@
 # SpeedFlasher
 
-SpeedFlasher converts raw partition image dumps (`.img` or `.img.zst`) into flashable ROM packages for Android devices. Generated packages can be flashed directly in custom recovery (TWRP, OrangeFox, PBRP, Lineage Recovery) or flashed from a PC/Termux via Fastboot and fastbootd.
+SpeedFlasher is a high-speed flashable ROM package maker for Android devices. It packages raw partition image dumps (.img or .img.zst) into flashable ZIP packages supporting both custom recovery installation (TWRP, OrangeFox, PBRP, Lineage Recovery) and PC/Termux Fastboot installation.
 
 Supported host platforms:
-- Windows (PowerShell, Command Prompt, batch launcher)
-- Linux (x86_64, aarch64)
-- Android Termux (arm64)
+- Windows
+- Linux
+- Android Termux
 
-## Features
+## Architecture
 
-- Dynamic partition management: Uses bundled `lptools` in custom recovery to remove, resize, and recreate logical partitions on modern dynamic super devices.
-- Streaming Zstandard decompression: Partitions are compressed with Zstandard and decompressed on-the-fly directly into partition block devices in recovery, eliminating memory exhaustion or intermediate cache writes.
-- Slot handling: Automatically detects active boot slot (`_a` / `_b`) or single slot devices and flashes firmware and bootchain partitions to both slots on A/B targets.
-- AVB 2.0 controls: Can pre-patch `vbmeta.img` flags or configure dm-verity and verification status on-device via `avbctl`.
-- Hybrid Fastboot installer: Packages include standalone `flash_windows.bat`, `flash_linux.sh`, and `flash_termux.sh` alongside bundled fastboot binaries, allowing deployment through USB fastboot / fastbootd without custom recovery.
-- POSIX permissions: Generated ZIP files retain exact `0755` executable permissions for recovery binaries and flash scripts.
-
-## Directory Structure
+The project organizes platform-specific logic and binaries cleanly by operating system:
 
 ```
 SpeedFlasher/
 ├── bin/
-│   ├── device/              # ARM64 recovery binaries (lptools, avbctl, zstd-arm64, rapidflasher)
-│   ├── fastboot/            # Fastboot binaries and drivers for Windows and Linux
-│   └── host/                # Host compression tools (zstd.exe, zstd)
+│   ├── device/              # ARM64 recovery binaries (lptools, avbctl, zstd-arm64, rapidflasher-arm64, lpdump, lpmake)
+│   ├── windows/             # Windows host binaries (zstd.exe, fastboot.exe, AdbWinApi.dll, AdbWinUsbApi.dll)
+│   ├── linux/               # Linux host binaries (zstd, fastboot, lpunpack, simg2img)
+│   └── termux/              # Termux environment handlers
 ├── core/
-│   ├── avb.py               # AVB 2.0 flag manager and header patcher
-│   ├── builder.py           # Core packaging and parallel compression pipeline
+│   ├── avb.py               # AVB 2.0 vbmeta header patcher
+│   ├── builder.py           # Multi-threaded package synthesis engine (with zip64 support)
 │   ├── partitions.py        # Partition scanner, classifier, and size inspector
-│   └── scripts.py           # Recovery update-binary and fastboot script generators
-├── main.py                  # CLI and interactive entry point
+│   ├── recovery/            # Recovery update-binary generator
+│   ├── windows/             # Windows binary resolver and flash_windows.bat generator
+│   ├── linux/               # Linux binary resolver and flash_linux.sh generator
+│   └── termux/              # Termux package resolver, storage checker, and flash_termux.sh generator
+├── main.py                  # CLI and interactive console entry point
 ├── start.bat                # Windows launcher
 ├── start.sh                 # Linux launcher
 ├── start_termux.sh          # Termux launcher
-├── requirements.txt         # Python dependencies
-└── README.md
+├── requirements.txt         # Minimal Python dependencies
+└── tests/
+    └── test_speedflasher.py # Deep multi-OS test suite
 ```
+
+## Features
+
+- Dynamic partition support: Bundles static ARM64 `lptools` to resize, unmap, and recreate logical partitions on modern dynamic super devices.
+- In-memory streaming decompression: Compresses partitions with Zstandard and decompresses them on the fly directly to `/dev/block/mapper/` nodes, avoiding recovery RAM exhaustion.
+- Both-slots patching: Automatically flashes firmware and bootchain partitions to both slots (`_a` and `_b`) on A/B targets.
+- AVB 2.0 control: Direct binary patching of `vbmeta.img` header flags (disable verity/verification) or on-device configuration via `avbctl`.
+- Hybrid Fastboot flasher: Packages include `flash_windows.bat`, `flash_linux.sh`, and `flash_termux.sh` along with fastboot binaries, allowing deployment via fastboot and fastbootd without custom recovery.
+- Zip64 enabled: Uses explicit zip64 streams to prevent `RuntimeError: File size too large, try using force_zip64` when packaging large partition dumps.
+- Automatic dependency setup: Detects and installs missing packages automatically on startup across Windows, Linux, and Termux.
 
 ## Installation
 
 ### Windows
-Run `start.bat` or install requirements manually:
+Run `start.bat` or install requirements:
 ```powershell
 pip install -r requirements.txt
 ```
 
 ### Linux
 ```bash
-chmod +x start.sh bin/host/* bin/device/* bin/fastboot/*
+chmod +x start.sh bin/linux/* bin/device/*
 pip install -r requirements.txt
 ./start.sh
 ```
 
 ### Android Termux
 ```bash
-pkg update && pkg install -y python zstd p7zip tar clang android-tools
+pkg update && pkg install -y python zstd p7zip clang android-tools
 pip install -r requirements.txt
 chmod +x start_termux.sh
 ./start_termux.sh
@@ -63,58 +71,39 @@ chmod +x start_termux.sh
 ## Usage
 
 ### Interactive Mode
-Run without arguments to start the interactive prompt:
-```bash
-python main.py
+Run `python main.py` or double-click the launcher for your OS:
+```text
+Enter IMGS Path : C:\Path\To\ROM_DUMP
+Devicename [Infinix GT 20 Pro] : 
+Codename [X6871] : 
+Version [15.1.2.180] : 
+AVB 2.0 (vbmeta) [skip/disable/enable] : disable
+Maintainer [Mehraan] : 
+Ztsd Compression (0-22) [1] : 1
+Zip Compression (0-9) [1] : 1
 ```
 
-### Command Line Mode
+The tool automatically generates the output package inside the `output/` directory:
+`output/<version>-<codename>-Flashable.zip`
 
+### Command Line Mode
 ```bash
 python main.py \
-  --imgs-dir "/path/to/extracted/imgs" \
+  --imgs-path "C:\Path\To\ROM_DUMP" \
   --device "Infinix GT 20 Pro" \
   --codename "X6871" \
   --version "15.1.2.180" \
   --maintainer "Mehraan" \
-  --vbmeta "skip" \
+  --vbmeta "disable" \
   --zstd-level 1 \
-  --zip-level 1 \
-  --output "./output/ROM-Flashable.zip"
+  --zip-level 1
 ```
 
-### CLI Arguments
-
-| Argument | Description | Default |
-|---|---|---|
-| `-i, --imgs-dir` | Directory containing raw `.img` or `.img.zst` files | Required (or interactive) |
-| `-o, --output` | Output ZIP file path | `./output/{version}-{codename}-Flashable.zip` |
-| `-d, --device` | Device marketing name | `Android Device` |
-| `-c, --codename` | Device board codename | Empty |
-| `-v, --version` | ROM / firmware version string | `1.0` |
-| `-m, --maintainer` | Maintainer name | `Mehraan` |
-| `--vbmeta` | AVB 2.0 mode (`disable`, `enable`, `skip`) | `skip` |
-| `--zstd-level` | Zstandard compression level (0-22) | `1` |
-| `--zip-level` | ZIP deflation level (0=STORE, 1-9=DEFLATE) | `1` |
-| `--no-fastboot` | Exclude Fastboot installer scripts and binaries from package | Disabled |
-
-## How Flashing Works
-
-### Recovery Flashing (TWRP / OrangeFox / Lineage)
-1. Device checks active slot via `ro.boot.slot_suffix`.
-2. Validates board codename (prompts with volume keys if device string does not match).
-3. Unmounts existing dynamic partitions.
-4. Flashes firmware images (`lk`, `logo`, `scp`, `spmfw`, etc.) to both slots on A/B hardware.
-5. Flashes bootchain images (`boot`, `dtbo`, `init_boot`, `vendor_boot`, `vbmeta`) to both slots.
-6. Clears and resizes dynamic partitions in `super` using `lptools`.
-7. Decompresses `.img.zst` files directly into `/dev/block/mapper/` targets.
-8. Syncs caches and remaps logical devices.
-
-### Fastboot Flashing (PC / Termux)
-1. Extract the generated flashable ZIP on PC or Termux.
-2. Connect phone in fastboot mode.
-3. Run `flash_windows.bat` on Windows, `./flash_linux.sh` on Linux, or `./flash_termux.sh` in Termux.
-4. The script flashes boot and firmware partitions, transitions to `fastbootd` (`fastboot reboot fastboot`), flashes logical partitions, and reboots.
+## Running Tests
+Run the test suite across all platform modules:
+```bash
+python -m unittest tests/test_speedflasher.py
+```
 
 ## License
 Apache-2.0 License.

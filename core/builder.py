@@ -10,27 +10,26 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from .avb import AvbManager
 from .partitions import scan_partitions, get_zstd_uncompressed_size
-from .scripts import (
-    generate_update_binary,
-    generate_fastboot_windows,
-    generate_fastboot_linux,
-    generate_fastboot_termux
-)
+from .recovery import generate_update_binary
+from .windows import WindowsPlatform, WindowsInstaller
+from .linux import LinuxPlatform, LinuxInstaller
+from .termux import TermuxPlatform, TermuxInstaller
+
+
+def get_current_platform():
+    if TermuxPlatform.is_termux():
+        return TermuxPlatform
+    if sys.platform.startswith("win"):
+        return WindowsPlatform
+    return LinuxPlatform
 
 
 def get_host_zstd() -> str:
-    script_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    candidates = [
-        os.path.join(script_dir, "bin", "host", "zstd.exe"),
-        os.path.join(script_dir, "bin", "host", "zstd"),
-        shutil.which("zstd.exe"),
-        shutil.which("zstd")
-    ]
-    for c in candidates:
-        if c and os.path.isfile(c):
-            if sys.platform.startswith("win") or os.access(c, os.X_OK):
-                return c
-    return ""
+    plat = get_current_platform()
+    z_bin = plat.get_zstd_binary()
+    if z_bin and os.path.isfile(z_bin):
+        return z_bin
+    return shutil.which("zstd.exe") or shutil.which("zstd") or ""
 
 
 def fast_stage_file(src: str, dst: str):
@@ -157,16 +156,21 @@ class FlashableBuilder:
         include_fastboot: bool = True
     ) -> str:
         root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        
+        # Ensure dependencies for current OS
+        current_plat = get_current_platform()
+        current_plat.ensure_dependencies()
+
         host_zstd = get_host_zstd()
 
         if partitions is None:
             if not imgs_dir:
                 raise ValueError("Either imgs_dir or partitions dictionary must be provided.")
-            print(f"[*] Scanning partitions in {imgs_dir}...")
+            print(f"[*] Scanning partitions in: {imgs_dir}")
             partitions = scan_partitions(imgs_dir, zstd_bin=host_zstd)
 
         if not partitions:
-            raise ValueError("No valid partition images found.")
+            raise ValueError(f"No valid partition images (.img or .img.zst) found.")
 
         print(f"[+] Discovered {len(partitions)} partition(s): {', '.join(sorted(partitions.keys()))}")
 
@@ -290,21 +294,30 @@ class FlashableBuilder:
         with open(os.path.join(meta_dir, "updater-script"), "w", encoding="utf-8", newline="\n") as f:
             f.write("# SpeedFlasher installer\n")
 
-        # Stage Fastboot installer scripts and binaries if enabled
+        # Stage Fastboot installer scripts and binaries for all OS targets
         if include_fastboot:
             print("[*] Staging fastboot installer scripts and binaries...")
-            fastboot_dir = os.path.join(work_dir, "bin", "fastboot")
-            src_fastboot_dir = os.path.join(root_dir, "bin", "fastboot")
-            if os.path.exists(src_fastboot_dir):
-                os.makedirs(fastboot_dir, exist_ok=True)
-                for item in os.listdir(src_fastboot_dir):
-                    s = os.path.join(src_fastboot_dir, item)
-                    d = os.path.join(fastboot_dir, item)
-                    fast_stage_file(s, d)
+            
+            # Windows fastboot assets
+            win_assets = WindowsPlatform.get_fastboot_assets()
+            if win_assets:
+                win_target = os.path.join(work_dir, "bin", "windows")
+                os.makedirs(win_target, exist_ok=True)
+                for wa in win_assets:
+                    fast_stage_file(wa, os.path.join(win_target, os.path.basename(wa)))
 
-            fb_win = generate_fastboot_windows(device, codename, firmware_imgs, system_imgs, super_imgs, use_zstd=use_zstd)
-            fb_lin = generate_fastboot_linux(device, codename, firmware_imgs, system_imgs, super_imgs, use_zstd=use_zstd)
-            fb_tmx = generate_fastboot_termux(device, codename, firmware_imgs, system_imgs, super_imgs, use_zstd=use_zstd)
+            # Linux fastboot assets
+            lin_assets = LinuxPlatform.get_fastboot_assets()
+            if lin_assets:
+                lin_target = os.path.join(work_dir, "bin", "linux")
+                os.makedirs(lin_target, exist_ok=True)
+                for la in lin_assets:
+                    fast_stage_file(la, os.path.join(lin_target, os.path.basename(la)))
+
+            # Scripts
+            fb_win = WindowsInstaller.generate_batch_script(device, codename, firmware_imgs, system_imgs, super_imgs, use_zstd=use_zstd)
+            fb_lin = LinuxInstaller.generate_shell_script(device, codename, firmware_imgs, system_imgs, super_imgs, use_zstd=use_zstd)
+            fb_tmx = TermuxInstaller.generate_shell_script(device, codename, firmware_imgs, system_imgs, super_imgs, use_zstd=use_zstd)
 
             with open(os.path.join(work_dir, "flash_windows.bat"), "w", encoding="utf-8", newline="\r\n") as f:
                 f.write(fb_win)
