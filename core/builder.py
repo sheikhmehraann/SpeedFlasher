@@ -184,18 +184,18 @@ class FlashableBuilder:
         meta_dir = os.path.join(work_dir, "META-INF", "com", "google", "android")
         os.makedirs(meta_dir, exist_ok=True)
 
-        if vbmeta_option in ("disable", "enable") and "vbmeta" in partitions:
-            try:
-                avb_mgr = AvbManager(vbmeta_option)
-                vb_info = partitions["vbmeta"]
-                if not vb_info["is_zstd"] and os.path.isfile(vb_info["path"]):
-                    staged_vbmeta = os.path.join(staging_dir, "vbmeta_staged.img")
-                    shutil.copy2(vb_info["path"], staged_vbmeta)
-                    if avb_mgr.patch_vbmeta_image(Path(staged_vbmeta)):
-                        print(f"[*] Pre-patched vbmeta header flags -> {vbmeta_option.upper()}")
-                        partitions["vbmeta"]["path"] = staged_vbmeta
-            except Exception as e:
-                print(f"[!] Notice: vbmeta header patch skipped: {e}")
+        if vbmeta_option in ("disable", "enable"):
+            avb_mgr = AvbManager(vbmeta_option)
+            for p_name, p_info in partitions.items():
+                if p_name.startswith("vbmeta") and not p_info["is_zstd"] and os.path.isfile(p_info["path"]):
+                    try:
+                        staged_vb = os.path.join(staging_dir, f"{p_name}_staged.img")
+                        shutil.copy2(p_info["path"], staged_vb)
+                        if avb_mgr.patch_vbmeta_image(Path(staged_vb)):
+                            print(f"[*] Pre-patched {p_name} header flags -> {vbmeta_option.upper()}")
+                            partitions[p_name]["path"] = staged_vb
+                    except Exception as e:
+                        print(f"[!] Notice: {p_name} header patch skipped: {e}")
 
         compress_tasks = []
         super_specs = []

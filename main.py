@@ -81,19 +81,26 @@ def interactive_flow():
     version_input = input(version_prompt).strip()
     version = version_input or def_version
 
-    avb_raw = input("AVB 2.0 (vbmeta) [skip/disable/enable] : ").strip().lower()
-    avb_mode = avb_raw if avb_raw in ("disable", "enable") else "skip"
+    avb_raw = input("AVB 2.0 (vbmeta) : ").strip().lower()
+    if avb_raw in ("1", "skip", "s", ""):
+        avb_mode = "skip"
+    elif avb_raw in ("2", "disable", "d"):
+        avb_mode = "disable"
+    elif avb_raw in ("3", "enable", "e"):
+        avb_mode = "enable"
+    else:
+        avb_mode = "skip"
 
-    maintainer_input = input("Maintainer [Mehraan] : ").strip()
+    maintainer_input = input("Maintainer : ").strip()
     maintainer = maintainer_input or "Mehraan"
 
-    zstd_raw = input("Ztsd Compression (0-22) [1] : ").strip()
+    zstd_raw = input("Ztsd Compression (0-22) : ").strip()
     try:
         zstd_level = int(zstd_raw) if zstd_raw else 1
     except ValueError:
         zstd_level = 1
 
-    zip_raw = input("Zip Compression (0-9) [1] : ").strip()
+    zip_raw = input("Zip Compression (0-9) : ").strip()
     try:
         zip_level = int(zip_raw) if zip_raw else 1
     except ValueError:
