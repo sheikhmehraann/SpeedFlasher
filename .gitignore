@@ -11,7 +11,8 @@ venv/
 build_workspace/
 zip_workspace/
 temp_staging/
-output/
+output/*
+!output/.gitkeep
 extracted/
 
 # Archives and raw image outputs
