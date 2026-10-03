@@ -403,6 +403,35 @@ class TestSpeedFlasherDeepOS(unittest.TestCase):
             self.assertNotIn("[1]", p)
             self.assertNotIn("[Mehraan]", p)
 
+    def test_gui_initialization_and_scan(self):
+        import tkinter as tk
+        from gui import SpeedFlasherGUI, apply_windows_11_mica_theme
+
+        root = tk.Tk()
+        root.withdraw()
+        try:
+            app = SpeedFlasherGUI(root)
+            self.assertIsNotNone(app)
+            self.assertEqual(app.dev_var.get(), "Android Device")
+            self.assertEqual(app.ver_var.get(), "1.0")
+            self.assertEqual(app.avb_var.get(), "skip")
+
+            # Test scanning test_dir
+            app.path_var.set(self.test_dir)
+            app._scan_folder(self.test_dir)
+            self.assertEqual(len(app.partitions_dict), 4)
+            self.assertIn("Dynamic: 1", app.chip_super.cget("text"))
+            self.assertIn("Bootchain: 2", app.chip_boot.cget("text"))
+            self.assertIn("Firmware: 1", app.chip_firmware.cget("text"))
+
+            # Test slider callbacks
+            app._on_zstd_slider("3")
+            self.assertEqual(app.zstd_var.get(), 3)
+            app._on_zip_slider("0")
+            self.assertEqual(app.zip_var.get(), 0)
+        finally:
+            root.destroy()
+
 
 if __name__ == "__main__":
     unittest.main()

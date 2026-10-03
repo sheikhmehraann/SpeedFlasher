@@ -367,8 +367,14 @@ def cli_flow():
     parser.add_argument("--zip-level", type=int, default=1, help="ZIP compression level (0-9)")
     parser.add_argument("-o", "--output", help="Optional custom output ZIP path")
     parser.add_argument("--no-fastboot", action="store_true", help="Exclude Fastboot installer scripts and binaries")
+    parser.add_argument("--gui", action="store_true", help="Launch the Windows 11 Fluent Glass GUI")
 
     args = parser.parse_args()
+
+    if args.gui:
+        from gui import launch_gui
+        launch_gui()
+        return
 
     imgs_path = clean_path(args.imgs_path)
     if not imgs_path or not os.path.isdir(imgs_path):
@@ -403,7 +409,10 @@ def cli_flow():
 
 
 def main():
-    if len(sys.argv) == 1:
+    if "--gui" in sys.argv:
+        from gui import launch_gui
+        launch_gui()
+    elif len(sys.argv) == 1:
         interactive_flow()
     else:
         cli_flow()

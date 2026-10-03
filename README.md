@@ -41,9 +41,11 @@ SpeedFlasher/
 ├── output/                      # Default build target directory
 ├── tests/
 │   └── test_speedflasher.py     # Multi-OS unit and integration test suite
+├── gui.py                       # Windows 11 Fluent Dark Mica GUI
 ├── main.py                      # Interactive CLI and headless entrypoint
 ├── requirements.txt             # Python requirements (optional fallback)
-├── start.bat                    # Windows launcher
+├── start_gui.bat                # Windows 11 GUI launcher
+├── start.bat                    # Windows CLI launcher
 ├── start.sh                     # Linux launcher
 └── start_termux.sh              # Termux launcher
 ```
@@ -56,8 +58,20 @@ SpeedFlasher/
 - Windows 10 / 11 (64-bit)
 - Python 3.8 or newer (ensure "Add Python to PATH" is checked during installation)
 
-#### Building a Flashable Package
-1. Double-click `start.bat` or open PowerShell / Command Prompt and run:
+#### Building a Flashable Package (GUI Mode)
+1. Double-click `start_gui.bat` or run:
+   ```cmd
+   python gui.py
+   ```
+   *(Or run `python main.py --gui`)*
+2. The native Windows 11 Fluent Dark Mica interface will launch.
+3. Click **Browse...** to select your dumped partition images directory. The tool automatically detects partitions and parses `build.prop` for device metadata.
+4. Adjust AVB 2.0 flags, Zstandard compression, and ZIP levels as needed.
+5. Click **Build Flashable Package**. Progress and live logs will stream in the embedded console.
+6. Once complete, click **Open Output Folder** to reveal the compiled ZIP package.
+
+#### Building a Flashable Package (CLI Mode)
+1. Double-click `start.bat` or run:
    ```cmd
    python main.py
    ```
