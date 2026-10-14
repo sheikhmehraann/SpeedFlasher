@@ -9,7 +9,7 @@ import zipfile
 from unittest.mock import patch
 
 from core.avb import AvbManager
-from core.builder import FlashableBuilder, BuildResult
+from core.builder import FlashableBuilder, BuildResult, format_flashable_name
 from core.partitions import scan_partitions, classify_partition, is_filesystem_image, is_zstd_file
 from core.recovery import generate_update_binary
 from core.windows import WindowsPlatform, WindowsInstaller
@@ -431,6 +431,97 @@ class TestSpeedFlasherDeepOS(unittest.TestCase):
             self.assertEqual(app.zip_var.get(), 0)
         finally:
             root.destroy()
+
+    def test_format_flashable_name_no_spaces(self):
+        # Standard device, version, codename
+        name1 = format_flashable_name("Infinix GT 20 Pro", "15.1.2.180", "X6871")
+        self.assertEqual(name1, "Infinix-GT-20-Pro-X6871-15.1.2.180-Flashable.zip")
+        self.assertNotIn(" ", name1)
+
+        # Version with spaces
+        name2 = format_flashable_name("Pixel 7 Pro", "Android 14 QPR3", "cheetah")
+        self.assertEqual(name2, "Pixel-7-Pro-cheetah-Android-14-QPR3-Flashable.zip")
+        self.assertNotIn(" ", name2)
+
+        # Device matches codename
+        name3 = format_flashable_name("X6871", "1.0", "X6871")
+        self.assertEqual(name3, "X6871-1.0-Flashable.zip")
+        self.assertNotIn(" ", name3)
+
+        # Special characters and multiple spaces
+        name4 = format_flashable_name("My  Custom   Phone!", "v2.0_beta", "my-phone")
+        self.assertEqual(name4, "My-Custom-Phone-my-phone-v2.0-beta-Flashable.zip")
+        self.assertNotIn(" ", name4)
+
+    def test_zstd_compression_level_22_and_firmware_packaging(self):
+        out_pkg = os.path.join(self.test_dir, "output", "pkg_lvl22.zip")
+        res = FlashableBuilder.build(
+            imgs_dir=self.test_dir,
+            output_zip=out_pkg,
+            device="Infinix GT 20 Pro",
+            firmware="15.1",
+            codename="X6871",
+            zstd_level=22,
+            zip_level=1,
+            include_fastboot=True
+        )
+        self.assertTrue(os.path.isfile(res))
+        with zipfile.ZipFile(res, "r") as z:
+            names = z.namelist()
+            # Verify lk.img.zst and other partition images exist and are compressed
+            self.assertIn("lk.img.zst", names)
+            self.assertIn("boot.img.zst", names)
+            self.assertIn("system.img.zst", names)
+            self.assertIn("vbmeta.img.zst", names)
+
+    def test_zip_compression_level_0_vs_deflate(self):
+        # Level 0 (ZIP_STORED)
+        out_store = os.path.join(self.test_dir, "output", "pkg_store.zip")
+        res_store = FlashableBuilder.build(
+            imgs_dir=self.test_dir,
+            output_zip=out_store,
+            device="Device",
+            firmware="1.0",
+            codename="",
+            zstd_level=1,
+            zip_level=0,
+            include_fastboot=False
+        )
+        with zipfile.ZipFile(res_store, "r") as z:
+            for info in z.infolist():
+                self.assertEqual(info.compress_type, zipfile.ZIP_STORED)
+
+        # Level 6 (ZIP_DEFLATED)
+        out_deflate = os.path.join(self.test_dir, "output", "pkg_deflate.zip")
+        res_deflate = FlashableBuilder.build(
+            imgs_dir=self.test_dir,
+            output_zip=out_deflate,
+            device="Device",
+            firmware="1.0",
+            codename="",
+            zstd_level=1,
+            zip_level=6,
+            include_fastboot=False
+        )
+        with zipfile.ZipFile(res_deflate, "r") as z:
+            has_deflated = any(info.compress_type == zipfile.ZIP_DEFLATED for info in z.infolist())
+            self.assertTrue(has_deflated)
+
+    def test_build_sanitizes_spaces_in_output_path(self):
+        spaced_path = os.path.join(self.test_dir, "output", "My Device Rom Flashable.zip")
+        res = FlashableBuilder.build(
+            imgs_dir=self.test_dir,
+            output_zip=spaced_path,
+            device="My Device",
+            firmware="1.0",
+            codename="",
+            zstd_level=1,
+            zip_level=1,
+            include_fastboot=False
+        )
+        base = os.path.basename(res)
+        self.assertNotIn(" ", base)
+        self.assertEqual(base, "My-Device-Rom-Flashable.zip")
 
 
 if __name__ == "__main__":

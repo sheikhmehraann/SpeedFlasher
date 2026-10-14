@@ -1,4 +1,5 @@
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -14,6 +15,28 @@ from .recovery import generate_update_binary
 from .windows import WindowsPlatform, WindowsInstaller
 from .linux import LinuxPlatform, LinuxInstaller
 from .termux import TermuxPlatform, TermuxInstaller
+
+
+def format_flashable_name(device: str, version: str, codename: str = "") -> str:
+    def sanitize(text: str) -> str:
+        if not text:
+            return ""
+        s = re.sub(r'[\s_]+', '-', str(text).strip())
+        s = re.sub(r'[^a-zA-Z0-9.-]', '', s)
+        s = re.sub(r'-+', '-', s).strip('-')
+        return s
+
+    dev = sanitize(device) or "Device"
+    ver = sanitize(version) or "1.0"
+    code = sanitize(codename)
+
+    parts = [dev]
+    if code and code.lower() not in dev.lower():
+        parts.append(code)
+    parts.append(ver)
+    parts.append("Flashable.zip")
+
+    return "-".join(parts)
 
 
 def get_current_platform():
@@ -44,6 +67,28 @@ def fast_stage_file(src: str, dst: str):
         shutil.copy2(src, dst)
 
 
+def decompress_single_image_worker(task: Tuple[str, str, str, str]) -> Tuple[str, int]:
+    name, in_file, out_file, z_bin = task
+    decompressed = False
+    if z_bin and os.path.isfile(z_bin):
+        try:
+            subprocess.run([z_bin, "-d", "-f", "-q", "-T0", "--no-check", in_file, "-o", out_file], check=True)
+            decompressed = True
+        except Exception:
+            pass
+    if not decompressed:
+        try:
+            import zstandard
+            dctx = zstandard.ZstdDecompressor()
+            with open(in_file, "rb") as ifh, open(out_file, "wb") as ofh:
+                dctx.copy_stream(ifh, ofh)
+            decompressed = True
+        except Exception as e:
+            raise RuntimeError(f"Decompression failed for {in_file}: {e}")
+    raw_size = os.path.getsize(out_file) if os.path.isfile(out_file) else 0
+    return name, raw_size
+
+
 def compress_single_image_worker(task: Tuple[str, str, str, int, int, int, str]) -> Tuple[str, int]:
     name, in_file, out_file, level, raw_size, threads, z_bin = task
 
@@ -66,7 +111,7 @@ def compress_single_image_worker(task: Tuple[str, str, str, int, int, int, str])
     if not compressed:
         try:
             import zstandard
-            c_level = max(1, min(level, 19 if level > 19 else (1 if level <= 0 else level)))
+            c_level = max(1, min(level, 22 if level > 0 else 1))
             try:
                 cctx = zstandard.ZstdCompressor(level=c_level, threads=threads)
             except TypeError:
@@ -134,7 +179,7 @@ class FlashableBuilder:
                     st = os.stat(fp)
                     zinfo = zipfile.ZipInfo(filename=rp)
                     zinfo.date_time = time.localtime(st.st_mtime)[:6]
-                    if f.endswith(".zst") or zip_level == 0:
+                    if zip_level == 0:
                         zinfo.compress_type = zipfile.ZIP_STORED
                     else:
                         zinfo.compress_type = compression
@@ -213,7 +258,15 @@ class FlashableBuilder:
             print(f"\n[2/5] AVB 2.0 Configuration (SKIP)")
             print("      -> Keeping stock vbmeta flags intact")
 
+        # Sanitize output filename to guarantee zero whitespace
+        out_dir = os.path.dirname(output_zip)
+        base_name = os.path.basename(output_zip)
+        clean_base = re.sub(r'[\s_]+', '-', base_name)
+        clean_base = re.sub(r'-+', '-', clean_base).strip('-')
+        output_zip = os.path.join(out_dir, clean_base) if out_dir else clean_base
+
         compress_tasks = []
+        decompress_tasks = []
         super_specs = []
         tr_specs = []
         system_imgs = []
@@ -255,9 +308,22 @@ class FlashableBuilder:
                     compress_tasks.append((name, src_path, target_file, zstd_level, raw_size))
             else:
                 target_file = os.path.join(work_dir, f"{name}.img")
-                fast_stage_file(src_path, target_file)
+                if is_zst:
+                    decompress_tasks.append((name, src_path, target_file, host_zstd))
+                else:
+                    fast_stage_file(src_path, target_file)
 
-        if compress_tasks:
+        if decompress_tasks:
+            total_cpus = os.cpu_count() or 4
+            workers = min(len(decompress_tasks), total_cpus)
+            print(f"\n[3/5] Zstandard Decompression (Raw Images)")
+            with ProcessPoolExecutor(max_workers=workers) as executor:
+                futures = [executor.submit(decompress_single_image_worker, t) for t in decompress_tasks]
+                for f in as_completed(futures):
+                    name, raw_size = f.result()
+                    sz_str = f"{raw_size / (1024*1024):.1f} MB" if raw_size < 1024*1024*1024 else f"{raw_size / (1024*1024*1024):.2f} GB"
+                    print(f"      -> Decompressed {name}.img.zst -> {name}.img ({sz_str})")
+        elif compress_tasks:
             compress_tasks.sort(key=lambda t: t[4], reverse=True)
             total_cpus = os.cpu_count() or 4
             workers = min(len(compress_tasks), total_cpus)

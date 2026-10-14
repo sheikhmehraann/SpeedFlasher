@@ -13,7 +13,7 @@ else:
 if os.path.isdir(_OS_BIN) and _OS_BIN not in os.environ.get("PATH", ""):
     os.environ["PATH"] = f"{_OS_BIN}{os.pathsep}{os.environ.get('PATH', '')}"
 
-from core.builder import FlashableBuilder, get_current_platform
+from core.builder import FlashableBuilder, get_current_platform, format_flashable_name
 from core.partitions import scan_partitions
 
 
@@ -319,7 +319,7 @@ def interactive_flow():
         # Automatically generate output destination into output folder
         out_dir = os.path.join(_ROOT_DIR, "output")
         os.makedirs(out_dir, exist_ok=True)
-        out_name = f"{cfg['version']}-{cfg['codename']}-Flashable.zip" if cfg['codename'] else f"{cfg['version']}-Flashable.zip"
+        out_name = format_flashable_name(cfg['device'], cfg['version'], cfg['codename'])
         output_zip = os.path.join(out_dir, out_name)
 
         print(f"\n[*] Output target: {output_zip}")
@@ -388,7 +388,7 @@ def cli_flow():
 
     out_dir = os.path.join(_ROOT_DIR, "output")
     os.makedirs(out_dir, exist_ok=True)
-    out_name = f"{args.version}-{args.codename}-Flashable.zip" if args.codename else f"{args.version}-Flashable.zip"
+    out_name = format_flashable_name(args.device, args.version, args.codename)
     output_zip = clean_path(args.output) if args.output else os.path.join(out_dir, out_name)
 
     res = FlashableBuilder.build(

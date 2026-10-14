@@ -10,7 +10,7 @@ import tkinter as tk
 from tkinter import filedialog, ttk
 from typing import Optional, Dict, Any
 
-from core.builder import FlashableBuilder, get_current_platform
+from core.builder import FlashableBuilder, get_current_platform, format_flashable_name
 from core.partitions import scan_partitions, get_zstd_uncompressed_size
 
 
@@ -592,14 +592,15 @@ class SpeedFlasherGUI:
         out_dir = os.path.join(root_dir, "output")
         os.makedirs(out_dir, exist_ok=True)
 
+        dev = self.dev_var.get().strip() or "Android Device"
         ver = self.ver_var.get().strip() or "1.0"
         code = self.code_var.get().strip()
-        out_name = f"{ver}-{code}-Flashable.zip" if code else f"{ver}-Flashable.zip"
+        out_name = format_flashable_name(dev, ver, code)
         output_zip = os.path.join(out_dir, out_name)
 
         params = {
             "output_zip": output_zip,
-            "device": self.dev_var.get().strip() or "Android Device",
+            "device": dev,
             "firmware": ver,
             "codename": code,
             "imgs_dir": imgs_path,
