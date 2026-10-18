@@ -44,8 +44,9 @@ SpeedFlasher/
 ├── gui.py                       # Windows 11 Fluent Dark Mica GUI
 ├── main.py                      # Interactive CLI and headless entrypoint
 ├── requirements.txt             # Python requirements (optional fallback)
-├── start_gui.bat                # Windows 11 GUI launcher
-├── start.bat                    # Windows CLI launcher
+├── setup.bat                    # Windows auto-bootstrap (installs Python & requirements)
+├── start_gui.bat                # Windows 11 GUI launcher (runs auto-setup if needed)
+├── start.bat                    # Windows CLI launcher (runs auto-setup if needed)
 ├── start.sh                     # Linux launcher
 └── start_termux.sh              # Termux launcher
 ```
@@ -56,7 +57,7 @@ SpeedFlasher/
 
 #### Requirements
 - Windows 10 / 11 (64-bit)
-- Python 3.8 or newer (ensure "Add Python to PATH" is checked during installation)
+- Python 3.8 or newer (*Zero-setup required*: `start_gui.bat` and `start.bat` automatically detect, download, and configure Python and `requirements.txt` if missing)
 
 #### Building a Flashable Package (GUI Mode)
 1. Double-click `start_gui.bat` or run:

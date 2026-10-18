@@ -672,9 +672,24 @@ class SpeedFlasherGUI:
 
 
 def launch_gui():
-    root = tk.Tk()
-    app = SpeedFlasherGUI(root)
-    root.mainloop()
+    try:
+        root = tk.Tk()
+    except Exception as e:
+        print(f"\n[Error] Failed to initialize Tkinter display: {e}")
+        if sys.platform != "win32":
+            print("[Tip] On Linux, install Tkinter: sudo apt install python3-tk")
+        input("\nPress Enter to exit...")
+        sys.exit(1)
+
+    try:
+        app = SpeedFlasherGUI(root)
+        root.mainloop()
+    except Exception as e:
+        print(f"\n[Error] GUI runtime error: {e}")
+        import traceback
+        traceback.print_exc()
+        input("\nPress Enter to exit...")
+        sys.exit(1)
 
 
 if __name__ == "__main__":

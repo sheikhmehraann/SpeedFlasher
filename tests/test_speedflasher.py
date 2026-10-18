@@ -523,6 +523,35 @@ class TestSpeedFlasherDeepOS(unittest.TestCase):
         self.assertNotIn(" ", base)
         self.assertEqual(base, "My-Device-Rom-Flashable.zip")
 
+    def test_launchers_and_setup_scripts(self):
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        setup_bat = os.path.join(root, "setup.bat")
+        start_bat = os.path.join(root, "start.bat")
+        start_gui = os.path.join(root, "start_gui.bat")
+        start_sh = os.path.join(root, "start.sh")
+        start_tmx = os.path.join(root, "start_termux.sh")
+        req_txt = os.path.join(root, "requirements.txt")
+
+        for f in [setup_bat, start_bat, start_gui, start_sh, start_tmx, req_txt]:
+            self.assertTrue(os.path.isfile(f), f"Expected file missing: {f}")
+
+        with open(setup_bat, "r", encoding="utf-8") as f:
+            setup_content = f.read()
+            self.assertIn("FOUND_PYTHON", setup_content)
+            self.assertIn("requirements.txt", setup_content)
+            self.assertIn("winget", setup_content)
+            self.assertIn("python-3.11", setup_content)
+
+        with open(start_bat, "r", encoding="utf-8") as f:
+            start_content = f.read()
+            self.assertIn("setup.bat", start_content)
+            self.assertIn("pause", start_content)
+
+        with open(start_gui, "r", encoding="utf-8") as f:
+            gui_content = f.read()
+            self.assertIn("setup.bat", gui_content)
+            self.assertIn("pause", gui_content)
+
 
 if __name__ == "__main__":
     unittest.main()
