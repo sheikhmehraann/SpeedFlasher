@@ -539,7 +539,7 @@ class TestSpeedFlasherDeepOS(unittest.TestCase):
             setup_content = f.read()
             self.assertIn("FOUND_PYTHON", setup_content)
             self.assertIn("requirements.txt", setup_content)
-            self.assertIn("winget", setup_content)
+            self.assertIn("speedflasher_py_setup.exe", setup_content)
             self.assertIn("python-3.11", setup_content)
 
         with open(start_bat, "r", encoding="utf-8") as f:
