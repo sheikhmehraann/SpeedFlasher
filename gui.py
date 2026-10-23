@@ -10,6 +10,12 @@ import tkinter as tk
 from tkinter import filedialog, ttk
 from typing import Optional, Dict, Any
 
+_ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
+try:
+    os.chdir(_ROOT_DIR)
+except OSError:
+    pass
+
 from core.builder import FlashableBuilder, get_current_platform, format_flashable_name
 from core.partitions import scan_partitions, get_zstd_uncompressed_size
 

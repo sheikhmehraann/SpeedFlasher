@@ -5,6 +5,10 @@ import sys
 
 # Add bin subdirectories to PATH based on platform
 _ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
+try:
+    os.chdir(_ROOT_DIR)
+except OSError:
+    pass
 if sys.platform.startswith("win"):
     _OS_BIN = os.path.join(_ROOT_DIR, "bin", "windows")
 else:

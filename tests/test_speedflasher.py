@@ -552,6 +552,27 @@ class TestSpeedFlasherDeepOS(unittest.TestCase):
             self.assertIn("setup.bat", gui_content)
             self.assertIn("pause", gui_content)
 
+    def test_build_from_arbitrary_working_dir(self):
+        old_cwd = os.getcwd()
+        try:
+            os.chdir(tempfile.gettempdir())
+            out_pkg = os.path.join(self.test_dir, "output", "pkg_cwd.zip")
+            res = FlashableBuilder.build(
+                imgs_dir=self.test_dir,
+                output_zip=out_pkg,
+                device="Device",
+                firmware="1.0",
+                codename="",
+                zstd_level=1,
+                zip_level=1,
+                include_fastboot=False
+            )
+            self.assertTrue(os.path.isfile(res))
+            self.assertFalse(os.path.exists("temp_staging"))
+            self.assertFalse(os.path.exists("zip_workspace"))
+        finally:
+            os.chdir(old_cwd)
+
 
 if __name__ == "__main__":
     unittest.main()
